@@ -49,17 +49,25 @@
           <span class="summary-card-value" id="sum-recovered">¥0</span>
         </div>
         <div class="summary-card accent">
-          <span class="summary-card-label">総利益（累計）</span>
-          <span class="summary-card-value" id="sum-profit">¥0</span>
+          <span class="summary-card-label">総利益（手数料）</span>
+          <span class="summary-card-value" id="sum-fee-profit">¥0</span>
+        </div>
+        <div class="summary-card accent2">
+          <span class="summary-card-label">総利益（元金差益）</span>
+          <span class="summary-card-value" id="sum-cap-profit">¥0</span>
+        </div>
+        <div class="summary-card">
+          <span class="summary-card-label">平均利益率</span>
+          <span class="summary-card-value" id="sum-avg-rate">0%</span>
         </div>
         <div class="summary-card">
           <span class="summary-card-label">平均回収率</span>
-          <span class="summary-card-value" id="sum-avg-rate">0%</span>
+          <span class="summary-card-value" id="sum-recovery-rate">0%</span>
         </div>
       </div>
     </section>
 
-    <!-- 操作パネル（新規追加・追加投資のみ） -->
+    <!-- 操作パネル -->
     <section class="panel-section">
       <div class="panel-tabs">
         <button class="panel-tab active" data-tab="add">＋ 新規追加</button>
@@ -70,8 +78,12 @@
       <div class="panel-body" id="tab-add">
         <div class="form-row">
           <div class="form-field">
+            <label class="form-label" for="add-name">件名</label>
+            <input class="form-input" type="text" id="add-name" placeholder="例: A社向け開発費"/>
+          </div>
+          <div class="form-field">
             <label class="form-label" for="add-principal">元金（円）<span class="form-hint">帳簿上</span></label>
-            <input class="form-input comma-input" type="text" id="add-principal" placeholder="例: 1,500,000" inputmode="numeric"/>
+            <input class="form-input comma-input" type="text" id="add-principal" placeholder="例: 1,000,000" inputmode="numeric"/>
           </div>
           <div class="form-field">
             <label class="form-label" for="add-actual">仮想元金（円）<span class="form-hint">上乗せ分</span></label>
@@ -83,28 +95,25 @@
             <label class="form-label" for="add-recovery-type">回収設定</label>
             <select class="form-input form-select" id="add-recovery-type">
               <option value="months">回収月数で指定</option>
-              <option value="monthly">月元本回収額で指定</option>
+              <option value="monthly">月支払額で指定（手数料込み）</option>
             </select>
           </div>
           <div class="form-field" id="wrap-months">
             <label class="form-label" for="add-months">回収月数</label>
-            <input class="form-input" type="number" id="add-months" placeholder="例: 12" min="1" inputmode="numeric"/>
+            <input class="form-input" type="number" id="add-months" placeholder="例: 10" min="1" inputmode="numeric"/>
           </div>
           <div class="form-field hidden" id="wrap-monthly">
-            <label class="form-label" for="add-monthly">月元本回収額（円）<span class="form-hint">利息除く</span></label>
-            <input class="form-input comma-input" type="text" id="add-monthly" placeholder="例: 50,000" inputmode="numeric"/>
+            <label class="form-label" for="add-monthly">月支払額（円）<span class="form-hint">手数料込み</span></label>
+            <input class="form-input comma-input" type="text" id="add-monthly" placeholder="例: 30,000" inputmode="numeric"/>
           </div>
         </div>
         <div class="form-row">
           <div class="form-field">
-            <label class="form-label" for="add-round">月回収額の切り上げ単位</label>
+            <label class="form-label" for="add-round">切り上げ単位</label>
             <select class="form-input form-select" id="add-round">
               <option value="1">切り上げなし</option>
-              <option value="100">100円単位</option>
-              <option value="500">500円単位</option>
-              <option value="1000">1,000円単位</option>
-              <option value="5000">5,000円単位</option>
-              <option value="10000" selected>10,000円単位</option>
+              <option value="1000">1k（1,000円）</option>
+              <option value="10000" selected>10k（10,000円）</option>
             </select>
           </div>
           <div class="form-field">
@@ -112,15 +121,12 @@
             <select class="form-input form-select" id="add-plan"></select>
           </div>
         </div>
-        <div class="form-field" style="margin-bottom:12px">
-          <label class="form-label" for="add-memo">備考（任意）</label>
-          <input class="form-input" type="text" id="add-memo" placeholder="例: A社向け開発費"/>
-        </div>
-        <!-- 月回収額プレビュー -->
         <div class="monthly-preview hidden" id="monthly-preview">
-          <span class="monthly-preview-label">月回収額（切り上げ後）</span>
-          <span class="monthly-preview-val" id="monthly-preview-val">¥0</span>
-          <span class="monthly-preview-months" id="monthly-preview-months"></span>
+          <div class="preview-main">
+            <span class="preview-label">月支払額</span>
+            <span class="preview-val" id="monthly-preview-val">¥0</span>
+          </div>
+          <div class="preview-sub" id="monthly-preview-detail"></div>
         </div>
         <button class="btn btn-primary btn-full" id="btn-add">案件を追加する</button>
       </div>
@@ -146,15 +152,15 @@
           </div>
         </div>
         <div class="form-field" style="margin-bottom:16px">
-          <label class="form-label">方式</label>
+          <label class="form-label">追加分の処理方式</label>
           <div class="radio-group">
             <label class="radio-label">
               <input type="radio" name="funds-mode" value="extend" checked/>
-              <span class="radio-custom"></span>期間延長（月額維持）
+              <span class="radio-custom"></span>月額維持・回数を増やす
             </label>
             <label class="radio-label">
               <input type="radio" name="funds-mode" value="increase"/>
-              <span class="radio-custom"></span>月額増加（期間維持）
+              <span class="radio-custom"></span>回数維持・月額を増やす
             </label>
           </div>
         </div>
@@ -170,29 +176,27 @@
           <thead>
             <tr>
               <th class="col-id">ID</th>
-              <th class="col-plan">プラン</th>
+              <th class="col-name">件名</th>
               <th class="col-debt">残債</th>
-              <th class="col-monthly">月回収額</th>
+              <th class="col-monthly">月支払額</th>
               <th class="col-count">回収回数</th>
               <th class="col-date">回収日</th>
               <th class="col-pay">回収金額</th>
-              <th class="col-memo">備考</th>
               <th class="col-action">操作</th>
             </tr>
           </thead>
           <tbody id="table-body">
-            <tr class="empty-row"><td colspan="9">案件がありません。上のフォームから追加してください。</td></tr>
+            <tr class="empty-row"><td colspan="8">案件がありません。上のフォームから追加してください。</td></tr>
           </tbody>
         </table>
       </div>
     </section>
 
   </main>
-
   <footer class="app-footer"><span>データはこのデバイスにのみ保存されます</span></footer>
 </div>
 
-<!-- 削除確認モーダル -->
+<!-- 削除確認 -->
 <div class="modal-overlay hidden" id="modal-delete">
   <div class="modal">
     <p class="modal-text" id="modal-delete-text">本当に削除しますか？</p>
@@ -203,28 +207,31 @@
   </div>
 </div>
 
-<!-- 不足時調整モーダル -->
+<!-- 不足時調整 -->
 <div class="modal-overlay hidden" id="modal-shortage">
   <div class="modal modal-shortage">
-    <h3 class="modal-title" style="margin-bottom:10px">⚠ 回収額が想定より少ない</h3>
+    <h3 class="modal-title" style="margin-bottom:10px">⚠ 支払額が想定より少ない</h3>
     <div class="shortage-info" id="shortage-info"></div>
     <div class="shortage-options">
-      <p class="form-label" style="margin-bottom:10px">どのように調整しますか？</p>
-      <p style="font-size:.78rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
-        ※ 不足利息は元金に加算されます（実費には加算しません）<br>
-        ※ 月額は返済能力の上限として固定し、回収回数を増やします
+      <p class="form-label" style="margin-bottom:8px">どのように調整しますか？</p>
+      <p style="font-size:.75rem;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
+        ※ 不足した手数料分のみ元金に加算（実費は変わりません）
       </p>
       <label class="radio-label" style="margin-bottom:8px">
         <input type="radio" name="shortage-action" value="extend" checked/>
-        <span class="radio-custom"></span>回収回数を増やす（月額固定）
+        <span class="radio-custom"></span>月額維持・回数を増やす
+      </label>
+      <label class="radio-label" style="margin-bottom:8px">
+        <input type="radio" name="shortage-action" value="increase"/>
+        <span class="radio-custom"></span>回数維持・月額を増やす
       </label>
       <label class="radio-label" style="margin-bottom:8px">
         <input type="radio" name="shortage-action" value="rate"/>
-        <span class="radio-custom"></span>利益率を変更して再計算する
+        <span class="radio-custom"></span>利益率を変更して再計算
       </label>
       <label class="radio-label">
         <input type="radio" name="shortage-action" value="none"/>
-        <span class="radio-custom"></span>調整しない（そのまま記録）
+        <span class="radio-custom"></span>調整しない
       </label>
     </div>
     <div class="shortage-rate-input hidden" id="shortage-rate-wrap">
@@ -238,7 +245,7 @@
   </div>
 </div>
 
-<!-- 管理者モーダル -->
+<!-- 管理者 -->
 <div class="modal-overlay hidden" id="modal-admin">
   <div class="modal modal-admin">
     <div class="detail-header">
@@ -268,44 +275,44 @@
       <h3 class="modal-title" id="detail-title">案件詳細</h3>
       <button class="btn-close" id="detail-close">✕</button>
     </div>
-    <!-- タブバー -->
     <div class="detail-tabs">
       <button class="detail-tab active" data-dtab="summary">📊 サマリー</button>
       <button class="detail-tab" data-dtab="settings">⚙ 設定</button>
       <button class="detail-tab" data-dtab="deposits">💰 入金</button>
       <button class="detail-tab" data-dtab="repayments">📥 回収</button>
     </div>
-
     <div class="detail-body">
 
-      <!-- タブ: サマリー -->
+      <!-- サマリー -->
       <div class="detail-tab-pane active" id="dtab-summary">
         <div class="ds-grid">
           <div class="ds-item"><span class="ds-label">元金</span><span class="ds-val" id="ds-principal">¥0</span></div>
           <div class="ds-item"><span class="ds-label">実費<span class="ds-sublabel">元金-仮想</span></span><span class="ds-val amber" id="ds-actual">¥0</span></div>
-          <div class="ds-item"><span class="ds-label">月回収額<span class="ds-sublabel">切上前</span></span><span class="ds-val" id="ds-monthly">¥0</span></div>
-          <div class="ds-item"><span class="ds-label">月回収額<span class="ds-sublabel">切上後</span></span><span class="ds-val" id="ds-monthly-final">¥0</span></div>
+          <div class="ds-item"><span class="ds-label">手数料<span class="ds-sublabel">元金×利益率%</span></span><span class="ds-val green" id="ds-fee">¥0</span></div>
+          <div class="ds-item"><span class="ds-label">月手数料<span class="ds-sublabel">毎月固定</span></span><span class="ds-val" id="ds-monthly-fee">¥0</span></div>
+          <div class="ds-item"><span class="ds-label">月支払額<span class="ds-sublabel">切上前</span></span><span class="ds-val" id="ds-monthly">¥0</span></div>
+          <div class="ds-item"><span class="ds-label">月支払額<span class="ds-sublabel">切上後</span></span><span class="ds-val" id="ds-monthly-final">¥0</span></div>
           <div class="ds-item"><span class="ds-label">総回収回数</span><span class="ds-val" id="ds-total-months">0回</span></div>
           <div class="ds-item"><span class="ds-label">残り回収回数</span><span class="ds-val" id="ds-remain-months">0回</span></div>
           <div class="ds-item"><span class="ds-label">累計回収</span><span class="ds-val" id="ds-recovered">¥0</span></div>
           <div class="ds-item"><span class="ds-label">残債</span><span class="ds-val" id="ds-remaining">¥0</span></div>
-          <div class="ds-item"><span class="ds-label">累計利益</span><span class="ds-val green" id="ds-profit">¥0</span></div>
+          <div class="ds-item"><span class="ds-label">累計手数料利益</span><span class="ds-val green" id="ds-profit">¥0</span></div>
+          <div class="ds-item"><span class="ds-label">元金差益<span class="ds-sublabel">元金-実費</span></span><span class="ds-val amber" id="ds-cap-profit">¥0</span></div>
           <div class="ds-item">
             <span class="ds-label">回収率</span>
             <span class="ds-val" id="ds-rate">0%</span>
             <div class="ds-rate-bar-wrap"><div class="ds-rate-bar-track"><div class="ds-rate-bar-fill" id="ds-rate-bar"></div></div></div>
           </div>
-          <div class="ds-item"><span class="ds-label">見込み利益<span class="ds-sublabel">全回収時</span></span><span class="ds-val green" id="ds-expected-profit">¥0</span></div>
-          <div class="ds-item"><span class="ds-label">総回収見込み<span class="ds-sublabel">元金＋利益</span></span><span class="ds-val" id="ds-expected-total">¥0</span></div>
+          <div class="ds-item"><span class="ds-label">総支払見込</span><span class="ds-val" id="ds-total-pay">¥0</span></div>
         </div>
         <div class="ds-shortage hidden" id="ds-shortage-row">
           <span class="ds-shortage-icon">⚠</span>
-          <span>不足利息累計（元金加算済）：</span>
+          <span>不足手数料累計（元金加算済）：</span>
           <span class="ds-shortage-val" id="ds-shortage">¥0</span>
         </div>
       </div>
 
-      <!-- タブ: 設定 -->
+      <!-- 設定 -->
       <div class="detail-tab-pane hidden" id="dtab-settings">
         <div class="detail-section" style="margin-bottom:14px">
           <div class="detail-section-header"><span class="detail-section-title">📋 プラン設定</span></div>
@@ -314,25 +321,16 @@
           </div>
         </div>
         <div class="detail-section">
-          <div class="detail-section-header"><span class="detail-section-title">⚙ 返済不足時のデフォルト処理</span></div>
-          <div class="shortage-setting">
-            <div class="radio-group">
-              <label class="radio-label">
-                <input type="radio" name="shortage-mode" value="extend" checked/>
-                <span class="radio-custom"></span>月数を増やす（月額固定）
-              </label>
-              <label class="radio-label">
-                <input type="radio" name="shortage-mode" value="spread"/>
-                <span class="radio-custom"></span>調整しない
-              </label>
-            </div>
+          <div class="detail-section-header"><span class="detail-section-title">備考</span></div>
+          <div style="padding:14px 16px">
+            <input class="form-input" type="text" id="detail-memo" placeholder="備考を入力…"/>
           </div>
         </div>
       </div>
 
-      <!-- タブ: 入金履歴 -->
+      <!-- 入金履歴 -->
       <div class="detail-tab-pane hidden" id="dtab-deposits">
-        <div class="detail-section-header" style="border-radius:var(--radius-md) var(--radius-md) 0 0;margin-bottom:0">
+        <div class="detail-section-header" style="border-radius:var(--radius-md) var(--radius-md) 0 0">
           <span class="detail-section-title">💰 入金履歴</span>
           <button class="btn btn-ghost btn-sm" id="btn-add-deposit">＋ 追加</button>
         </div>
@@ -344,15 +342,15 @@
         </div>
       </div>
 
-      <!-- タブ: 回収履歴 -->
+      <!-- 回収履歴 -->
       <div class="detail-tab-pane hidden" id="dtab-repayments">
-        <div class="detail-section-header" style="border-radius:var(--radius-md) var(--radius-md) 0 0;margin-bottom:0">
+        <div class="detail-section-header" style="border-radius:var(--radius-md) var(--radius-md) 0 0">
           <span class="detail-section-title">📥 回収履歴</span>
           <button class="btn btn-ghost btn-sm" id="btn-add-repayment">＋ 追加</button>
         </div>
         <div class="history-table-wrap" style="border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-md) var(--radius-md)">
           <table class="history-table">
-            <thead><tr><th>#</th><th>日付</th><th>回収額</th><th>想定額</th><th>過不足</th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>日付</th><th>支払額</th><th>想定額</th><th>過不足</th><th></th></tr></thead>
             <tbody id="repayment-tbody"></tbody>
           </table>
         </div>
