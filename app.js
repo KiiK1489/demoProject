@@ -371,26 +371,26 @@ function addFunds(){
   const date    = document.getElementById('funds-date').value||todayStr();
   const mode    = document.querySelector('input[name="funds-mode"]:checked').value;
 
-  if(!ok(id,'案件ID'))     return;
-  if(!ok(amount,'追加元金')) return;
+  if(!ok(id,'案件ID')) return;
 
   const p=projects.find(x=>x.id===id);
   if(!p){ showToast(`ID ${id} の案件が見つかりません`,'error'); return; }
 
   const actualAdd = (!actual||actual<=0)?0:actual;
+  // 追加元金・仮想元金どちらかが必要
+  const totalAdd = (amount||0) + actualAdd;
+  if(totalAdd<=0){ showToast('追加元金または仮想元金を入力してください','error'); return; }
 
-  // まず deposits に記録
+  // まず deposits に記録（仮想元金のみの場合は amount=0）
+  const addAmount = amount||0;
   if(!p.deposits) p.deposits=[];
-  p.deposits.push({date, amount, actualAmount:actualAdd||amount, note:'追加投資'});
+  p.deposits.push({date, amount:addAmount, actualAmount:addAmount, virtualAmount:actualAdd, note:'追加投資'});
 
   // 現在の月支払額を保存（月額固定で月数を計算するため）
   const fixedFinal = mrFinal(p);
 
-  // deposits から元金・実費・fee を再計算
-  p.principal   = p.deposits.reduce((s,d)=>s+(d.amount||0),0);
-  p.actualCost  = p.deposits.reduce((s,d)=>s+(d.actualAmount||d.amount||0),0);
-  p.virtualCost = Math.max(0, p.principal-p.actualCost);
-  p.fee         = p.principal*(p.rate/100);
+  // deposits から元金・実費・fee を再計算（仮想元金含む）
+  recalcFromDeposits(p);
 
   if(mode==='extend'){
     // 月額固定・回数を増やす
@@ -827,14 +827,22 @@ function saveRepEdit(p){
 function recalcFromDeposits(p){
   if(!p.deposits||!p.deposits.length) return;
 
-  // 元金・実費を deposits から積み上げ
-  const newPrincipal = p.deposits.reduce((s,d)=>s+(d.amount||0),0);
-  const newActual    = p.deposits.reduce((s,d)=>s+(d.actualAmount||d.amount||0),0);
+  // 定義:
+  //   amount        = 追加元金（純粋な貸付）
+  //   virtualAmount = 仮想元金（上乗せ分）
+  //   actualAmount  = 実費（= amount のみ。仮想元金は実費に含まない）
+  //
+  //   元金(principal)   = Σ(amount + virtualAmount)
+  //   実費(actualCost)  = Σ(actualAmount) = Σ(amount)
+  //   仮想元金          = Σ(virtualAmount)
+  const newPrincipal   = p.deposits.reduce((s,d)=>s+(d.amount||0)+(d.virtualAmount||0),0);
+  const newActual      = p.deposits.reduce((s,d)=>s+(d.actualAmount||0),0);
+  const newVirtual     = p.deposits.reduce((s,d)=>s+(d.virtualAmount||0),0);
 
   p.principal   = newPrincipal;
   p.actualCost  = newActual;
-  p.virtualCost = Math.max(0, newPrincipal - newActual);
-  p.fee         = newPrincipal * (p.rate/100); // fee = 新元金 × rate%
+  p.virtualCost = newVirtual;
+  p.fee         = newPrincipal * (p.rate/100); // fee = 元金 × rate%
 
   // 新しい月支払額（切上後）を計算
   const newFinal = mrFinal(p);
