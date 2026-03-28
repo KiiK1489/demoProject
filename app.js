@@ -30,9 +30,9 @@ let detailProjectId = null;
 let shortageContext = null;
 
 const DEFAULT_PLANS = [
-  { id:1, name:'プランA', rate:20, color:'#6b91c8' },
-  { id:2, name:'プランB', rate:25, color:'#3ecf8e' },
-  { id:3, name:'プランC', rate:30, color:'#f5a623' },
+  { id:1, name:'Easy',   rate:10,   color:'#3ecf8e' },
+  { id:2, name:'Normal', rate:12.5, color:'#6b91c8' },
+  { id:3, name:'Hard',   rate:15,   color:'#f5a623' },
 ];
 
 /* ══════════════════════════════════════
@@ -98,6 +98,12 @@ function ok(v,label,positive=true) {
 }
 function fmt(n)  { return '¥'+Math.round(n).toLocaleString('ja-JP') }
 function pct(n)  { return n.toFixed(1)+'%' }
+/** 利率を小数で表示（20→0.200、0.125→0.125） */
+function fmtRate(rate) {
+  // rate が 1 以上なら %単位なので /100 して小数に
+  const r = rate >= 1 ? rate/100 : rate;
+  return r.toFixed(3);
+}
 function todayStr() {
   const d=new Date();
   return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
@@ -209,7 +215,7 @@ function renderPlanList(){
     const row=document.createElement('div'); row.className='plan-row';
     row.innerHTML=`
       <input type="text" class="plan-name-input" value="${escAttr(plan.name)}" data-i="${i}"/>
-      <input type="number" class="plan-rate-input" value="${plan.rate}" min="0" step="0.1" inputmode="decimal" data-i="${i}" title="利益率(%)"/>
+      <input type="number" class="plan-rate-input" value="${fmtRate(plan.rate)}" min="0" max="1" step="0.001" inputmode="decimal" data-i="${i}" title="利率（例:0.125）"/>
       <input type="color" class="color-swatch" value="${plan.color}" data-i="${i}"/>
       <button class="plan-del-btn" data-i="${i}">🗑</button>`;
     container.appendChild(row);
@@ -223,21 +229,24 @@ function renderPlanList(){
   });
   container.querySelectorAll('.plan-rate-input').forEach(el=>{
     el.addEventListener('blur',()=>{
-      const i=Number(el.dataset.i); const val=parseNum(el.value);
-      if(val!==null&&val>=0){
-        plans[i].rate=val;
+      const i=Number(el.dataset.i); const rawVal=parseNum(el.value);
+      if(rawVal!==null&&rawVal>=0){
+        // 小数入力（<=1）なら%に変換（0.125→12.5）、すでに%なら変換なし
+        const ratePercent = rawVal <= 1 ? rawVal*100 : rawVal;
+        plans[i].rate=ratePercent;
         // プランを使っている案件のfee・rateを更新
         projects.forEach(p=>{
           if(p.planId===plans[i].id){
-            p.rate=val;
-            p.fee=p.principal*(val/100);
+            p.rate=ratePercent;
+            p.fee=p.principal*(ratePercent/100);
             const last=p.segments[p.segments.length-1];
-            if(last.startElapsed===p.elapsed) last.rate=val;
-            else p.segments.push({startElapsed:p.elapsed,rate:val});
+            if(last.startElapsed===p.elapsed) last.rate=ratePercent;
+            else p.segments.push({startElapsed:p.elapsed,rate:ratePercent});
           }
         });
+        el.value=fmtRate(ratePercent);
         savePlans();saveData();renderAll();
-      } else el.value=plans[i].rate;
+      } else el.value=fmtRate(plans[i].rate);
     });
     el.addEventListener('keydown',e=>{ if(e.key==='Enter') el.blur(); });
   });
@@ -292,8 +301,8 @@ function updatePreview(){
 
   document.getElementById('monthly-preview-val').textContent = fmt(finalMonthly);
   document.getElementById('monthly-preview-detail').innerHTML =
-    `月元本: ${fmt(totalPrinc/months)} ／ 月手数料: ${fmt(fee)} ／ 切上前: ${fmt(rawMonthly)}<br>`+
-    `${months}回払い ／ 総支払: ${fmt(totalPayAmt)} ／ 総手数料: ${fmt(fee*months)}`;
+    `月元本: ${fmt(totalPrinc/months)} + 月手数料: ${fmt(fee)} = 切上前: ${fmt(rawMonthly)} → 切上後: ${fmt(finalMonthly)}<br>`+
+    `${months}回払い ／ 総支払: ${fmt(finalMonthly*months)} ／ 総手数料: ${fmt(fee*months)}`;
   preview.classList.remove('hidden');
 }
 
@@ -344,6 +353,10 @@ function addProject(){
     const el=document.getElementById(id); if(el) el.value='';
   });
   document.getElementById('monthly-preview').classList.add('hidden');
+  // 回収設定を月数指定に戻す
+  document.getElementById('add-recovery-type').value='months';
+  document.getElementById('wrap-months').classList.remove('hidden');
+  document.getElementById('wrap-monthly').classList.add('hidden');
   showToast(`案件 #${p.id}「${name||'無題'}」を追加しました`,'success');
 }
 
@@ -565,8 +578,15 @@ function renderDetailSummary(p){
   document.getElementById('ds-fee').textContent          = fmt(fee);
   document.getElementById('ds-monthly-fee').textContent  = fmt(fee);
   document.getElementById('ds-monthly').textContent      = fmt(rawM);
-  document.getElementById('ds-monthly-final').textContent= fmt(finalM);
   document.getElementById('ds-total-months').textContent = `${p.months}回`;
+  // 利益率 = 総手数料(fee×月数) ÷ 実費
+  const actualCostVal = p.actualCost||p.principal;
+  const totalFee      = fee*p.months;
+  const profitRate    = actualCostVal>0 ? totalFee/actualCostVal : 0;
+  document.getElementById('ds-profit-rate').textContent  = profitRate.toFixed(3);
+  // 利益見込み = mrFinal×months - 元金（手数料含む総支払 - 元金回収分）
+  const profitExpected = mrFinal(p)*p.months - p.principal;
+  document.getElementById('ds-profit-expected').textContent = fmt(Math.max(0,profitExpected));
   document.getElementById('ds-remain-months').textContent= `${remainM}回`;
   document.getElementById('ds-recovered').textContent    = fmt(rec);
   document.getElementById('ds-remaining').textContent    = fmt(debt);
@@ -760,8 +780,8 @@ function renderSummary(){
   const totalCapProfit = projects.reduce((a,p)=>a+capitalProfit(p),0);
   const avgRate        = projects.length>0
     ? projects.reduce((a,p)=>a+(p.rate||0),0)/projects.length : 0;
-  const totalPay       = projects.reduce((a,p)=>a+totalPay(p),0);
-  const avgRecovery    = totalPay>0?Math.min((totalRecovered/totalPay)*100,100):0;
+  const sumTotalPay    = projects.reduce((a,p)=>a+totalPay(p),0);
+  const avgRecovery    = sumTotalPay>0?Math.min((totalRecovered/sumTotalPay)*100,100):0;
 
   document.getElementById('sum-principal').textContent    = fmt(totalPrincipal);
   document.getElementById('sum-actual').textContent       = fmt(totalActual);
@@ -769,7 +789,7 @@ function renderSummary(){
   document.getElementById('sum-recovered').textContent    = fmt(totalRecovered);
   document.getElementById('sum-fee-profit').textContent   = fmt(totalFeeProfit);
   document.getElementById('sum-cap-profit').textContent   = fmt(totalCapProfit);
-  document.getElementById('sum-avg-rate').textContent     = pct(avgRate);
+  document.getElementById('sum-avg-rate').textContent     = fmtRate(avgRate);
   document.getElementById('sum-recovery-rate').textContent= pct(avgRecovery);
 }
 
@@ -950,7 +970,9 @@ function bindEvents(){
 function init(){
   loadData();
   if(projects.length>0) saveData();
-  populatePlanSelects();
+  // デフォルトでNormal（id:2）を選択
+  const normalPlan = plans.find(p=>p.name==='Normal');
+  populatePlanSelects(normalPlan?normalPlan.id:null);
   renderAll();
   initTabs();
   bindEvents();
