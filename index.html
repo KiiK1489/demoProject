@@ -210,12 +210,12 @@
 <!-- 不足時調整 -->
 <div class="modal-overlay hidden" id="modal-shortage">
   <div class="modal modal-shortage">
-    <h3 class="modal-title" style="margin-bottom:10px">⚠ 支払額が想定より少ない</h3>
+    <h3 class="modal-title" id="adjust-modal-title" style="margin-bottom:10px">⚠ 支払額の調整</h3>
     <div class="shortage-info" id="shortage-info"></div>
     <div class="shortage-options">
       <p class="form-label" style="margin-bottom:8px">どのように調整しますか？</p>
       <p style="font-size:.75rem;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
-        ※ 不足した手数料分のみ元金に加算（実費は変わりません）
+        ※ 不足の場合：手数料分を元金に加算（実費は変わりません）<br>※ 超過の場合：超過分を手数料から相殺します
       </p>
       <label class="radio-label" style="margin-bottom:8px">
         <input type="radio" name="shortage-action" value="extend" checked/>

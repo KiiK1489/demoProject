@@ -151,8 +151,6 @@ function calcRecovered(p){
 
 /**
  * 累計手数料利益
- * 1回の支払いに含まれる手数料分 = mrFinal - 月元本
- * セグメントごとに fee を再計算して積算
  */
 function calcProfit(p){
   if(!p.elapsed) return 0;
@@ -429,18 +427,28 @@ function recordPayment(id){
   const amount = parseNum(amtEl?.value?.replace(/,/g,''));
 
   if(!ok(amount,'回収金額')) return;
+
   const debt = calcDebt(p);
-  if(amount>debt){ showToast(`回収金額が残債(${fmt(debt)})を超えています`,'error'); return; }
+  if(amount > debt + 1){
+    showToast(`回収金額が残債(${fmt(debt)})を超えています`,'error'); return;
+  }
 
   if(!p.repayments) p.repayments=[];
-  p.repayments.push({date,amount});
+  p.repayments.push({date, amount});
   p.elapsed++;
-  p.recovered=calcRecovered(p);
+  p.recovered = calcRecovered(p);
 
-  const expected=mrFinal(p);
-  if(amount<expected && calcDebt(p)>0){
-    shortageContext={id,amount,expected,shortage:expected-amount};
-    openShortageModal(p);
+  const expected = mrFinal(p);
+  const diff     = amount - expected;
+
+  if(diff < -1 && calcDebt(p) > 0){
+    // 不足
+    shortageContext = {id, amount, expected, shortage: expected-amount, type:'shortage'};
+    openAdjustModal(p);
+  } else if(diff > 1 && calcDebt(p) >= 0){
+    // 超過
+    shortageContext = {id, amount, expected, surplus: amount-expected, type:'surplus'};
+    openAdjustModal(p);
   } else {
     saveData(); renderAll();
     showToast(`案件 #${id} 回収を記録しました（${fmt(amount)}）`,'success');
@@ -449,14 +457,25 @@ function recordPayment(id){
 }
 
 /* ══════════════════════════════════════
-   不足モーダル
+   回収調整モーダル（不足・超過共通）
 ══════════════════════════════════════ */
-function openShortageModal(p){
-  const {expected,shortage}=shortageContext;
+function openAdjustModal(p){
+  const ctx = shortageContext;
+  const isShortage = ctx.type==='shortage';
+  const diff = isShortage ? ctx.shortage : ctx.surplus;
+  const diffLabel = isShortage ? '不足額' : '超過額';
+
   document.getElementById('shortage-info').innerHTML=
-    `想定支払額: <strong>${fmt(expected)}</strong><br>`+
-    `実際の支払額: <strong>${fmt(shortageContext.amount)}</strong><br>`+
-    `不足額: <strong>${fmt(shortage)}</strong>`;
+    `想定支払額: <strong>${fmt(ctx.expected)}</strong><br>`+
+    `実際の支払額: <strong>${fmt(ctx.amount)}</strong><br>`+
+    `<span style="color:${isShortage?'var(--red)':'var(--green)'}">${diffLabel}: <strong>${fmt(diff)}</strong></span>`;
+
+  // 不足・超過で選択肢のラベルを切り替え
+  const extLabel = isShortage ? '月額維持・回数を増やす' : '月額維持・回数を減らす';
+  const incLabel = isShortage ? '回数維持・月額を増やす' : '回数維持・月額を減らす';
+  document.querySelector('input[name="shortage-action"][value="extend"]').closest('.radio-label').lastChild.textContent = extLabel;
+  document.querySelector('input[name="shortage-action"][value="increase"]').closest('.radio-label').lastChild.textContent = incLabel;
+
   const r=document.querySelector(`input[name="shortage-action"][value="${p.shortageMode||'extend'}"]`);
   if(r) r.checked=true;
   document.getElementById('shortage-rate-wrap').classList.add('hidden');
@@ -466,49 +485,55 @@ function openShortageModal(p){
 
 function applyShortage(){
   if(!shortageContext) return;
-  const {id,shortage}=shortageContext;
+  const ctx = shortageContext;
+  const {id} = ctx;
   const p=projects.find(x=>x.id===id); if(!p) return;
   const action=document.querySelector('input[name="shortage-action"]:checked').value;
+  const isShortage = ctx.type==='shortage';
+  const diff = isShortage ? ctx.shortage : -(ctx.surplus); // 不足は正、超過は負
 
-  // 元金増加前のfee・月支払を保存
+  // 元金変更前の月支払を保存
   const fixedFinal = mrFinal(p);
+  // 残り回収分の元金（まだ回収していない元金）
+  const remainPrincipal = p.principal - (p.principal/p.months)*p.elapsed;
 
   if(action==='extend'){
-    // 不足分のうち手数料相当のみ元金・feeに加算
-    // 月手数料 = fee（固定）/ 全支払の fee割合
-    const feeRatio    = getFee(p)/(p.principal/p.months+getFee(p));
-    const feeMissing  = shortage*feeRatio;
-    p.fee            += feeMissing;
-    p.shortageAccum  += feeMissing;
-    // 月額固定 → 月数を再計算
-    // monthly = totalPrincipal/months + fee → months = totalPrincipal/(monthly-fee)
-    const monthlyPrincipalPart = fixedFinal - p.fee;
-    if(monthlyPrincipalPart>0)
-      p.months = p.elapsed + Math.ceil((p.principal - (p.principal/p.months)*p.elapsed) / monthlyPrincipalPart);
+    // 月額固定・回数で調整
+    // 差額の手数料相当分を fee に反映
+    const feeRatio  = getFee(p) / mrRaw(p);
+    const feeAdj    = diff * feeRatio; // 不足なら+、超過なら-
+    p.fee           = Math.max(0, p.fee + feeAdj);
+    p.shortageAccum = Math.max(0, (p.shortageAccum||0) + feeAdj);
+    // 月額 = fixedFinal のまま、残り月数を再計算
+    const newMonthlyPrincipalPart = fixedFinal - p.fee;
+    if(newMonthlyPrincipalPart > 0)
+      p.months = p.elapsed + Math.max(1, Math.ceil(remainPrincipal / newMonthlyPrincipalPart));
     p.shortageMode='extend';
 
   } else if(action==='increase'){
-    // 回数固定・月額増やす
-    // feeをそのまま増やして月数は変えない
-    const feeRatio   = getFee(p)/(p.principal/p.months+getFee(p));
-    const feeMissing = shortage*feeRatio;
-    p.fee            += feeMissing;
-    p.shortageAccum  += feeMissing;
+    // 回数固定・月額で調整
+    const feeRatio  = getFee(p) / mrRaw(p);
+    const feeAdj    = diff * feeRatio;
+    p.fee           = Math.max(0, p.fee + feeAdj);
+    p.shortageAccum = Math.max(0, (p.shortageAccum||0) + feeAdj);
+    // months はそのまま → mrFinal が自動で変わる
     p.shortageMode='increase';
 
   } else if(action==='rate'){
-    const newRate=parseNum(document.getElementById('shortage-new-rate').value);
-    if(newRate===null||newRate<0){ showToast('利益率を入力してください','error'); return; }
+    const inputVal=parseNum(document.getElementById('shortage-new-rate').value);
+    if(inputVal===null||inputVal<0){ showToast('利率を入力してください','error'); return; }
+    // 小数入力（<=1）なら%換算
+    const newRate = inputVal <= 1 ? inputVal*100 : inputVal;
     const last=p.segments[p.segments.length-1];
     if(last.startElapsed===p.elapsed) last.rate=newRate;
     else p.segments.push({startElapsed:p.elapsed,rate:newRate});
     p.rate   = newRate;
-    p.fee    = p.principal*(newRate/100); // 新利益率で fee を再計算
+    p.fee    = p.principal*(newRate/100);
     p.planId = null;
     // 月額固定で月数再計算
-    const newMonthlyPrincipalPart = fixedFinal - p.fee;
-    if(newMonthlyPrincipalPart>0)
-      p.months = p.elapsed + Math.ceil((p.principal-(p.principal/p.months)*p.elapsed)/newMonthlyPrincipalPart);
+    const newMPP = fixedFinal - p.fee;
+    if(newMPP > 0)
+      p.months = p.elapsed + Math.max(1, Math.ceil(remainPrincipal / newMPP));
   }
   // 'none': 何もしない
 
@@ -701,9 +726,46 @@ function saveRepEdit(p){
     if(d) p.repayments[i].date   = d.value;
     if(a) p.repayments[i].amount = parseNum(a.value)||0;
   });
-  p.elapsed=p.repayments.length;
-  p.recovered=calcRecovered(p);
+  p.elapsed  = p.repayments.length;
+  p.recovered= calcRecovered(p);
+  // 変更後の回収額合計で fee・months を再計算
+  fullRecalc(p);
   saveData();renderRepaymentTable(p);renderDetailSummary(p);renderAll();
+}
+
+/**
+ * 全回収履歴から fee・months・shortageAccum を再計算
+ * 回収履歴を手動変更したときに呼ぶ
+ */
+function fullRecalc(p){
+  if(!p.repayments||!p.repayments.length) return;
+  const baseMonthlyPrincipal = p.principal / p.months;
+  const baseFee              = p.principal * (p.rate/100);
+  const baseRaw              = baseMonthlyPrincipal + baseFee;
+  const baseFinal            = ceilTo(baseRaw, p.roundUnit||10000);
+
+  let feeAccum = 0;
+  p.repayments.forEach(r=>{
+    const diff = (r.amount||0) - baseFinal;
+    if(diff < -1){
+      // 不足: 手数料相当分を累積
+      const feeRatio = baseFee / baseRaw;
+      feeAccum += Math.abs(diff) * feeRatio;
+    } else if(diff > 1){
+      // 超過: 手数料超過分を相殺
+      const feeRatio = baseFee / baseRaw;
+      feeAccum -= diff * feeRatio;
+    }
+  });
+
+  p.fee           = Math.max(0, baseFee + feeAccum);
+  p.shortageAccum = Math.max(0, feeAccum);
+
+  // 残元金から残り月数を計算（月額は baseFinal 固定）
+  const remainPrincipal = p.principal - baseMonthlyPrincipal * p.elapsed;
+  const newMPP          = baseFinal - p.fee;
+  if(newMPP > 0 && remainPrincipal > 0)
+    p.months = p.elapsed + Math.max(1, Math.ceil(remainPrincipal / newMPP));
 }
 
 /* ══════════════════════════════════════

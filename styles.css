@@ -11,7 +11,7 @@
   --amber:#f5a623; --amber-dim:rgba(245,166,35,0.14);
   --purple:#a78bfa; --purple-dim:rgba(167,139,250,0.14);
   --radius-sm:6px; --radius-md:10px; --radius-lg:16px;
-  --font-body:'Noto Sans JP',sans-serif;
+  --font-body:'Noto Sans JP','Hiragino Kaku Gothic ProN','Hiragino Sans','Yu Gothic Medium','Yu Gothic','Meiryo',sans-serif;
   --font-mono:'Fira Code',monospace;
   --t:0.18s ease;
 }
