@@ -278,7 +278,7 @@
     <div class="detail-tabs">
       <button class="detail-tab active" data-dtab="summary">📊 サマリー</button>
       <button class="detail-tab" data-dtab="settings">⚙ 設定</button>
-      <button class="detail-tab" data-dtab="deposits">💰 入金</button>
+      <button class="detail-tab" data-dtab="deposits">💰 投資履歴</button>
       <button class="detail-tab" data-dtab="repayments">📥 回収</button>
     </div>
     <div class="detail-body">
@@ -329,15 +329,14 @@
         </div>
       </div>
 
-      <!-- 入金履歴 -->
+      <!-- 投資履歴 -->
       <div class="detail-tab-pane hidden" id="dtab-deposits">
         <div class="detail-section-header" style="border-radius:var(--radius-md) var(--radius-md) 0 0">
-          <span class="detail-section-title">💰 入金履歴</span>
-          <button class="btn btn-ghost btn-sm" id="btn-add-deposit">＋ 追加</button>
+          <span class="detail-section-title">💰 投資履歴</span>
         </div>
         <div class="history-table-wrap" style="border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-md) var(--radius-md)">
           <table class="history-table">
-            <thead><tr><th>日付</th><th>帳簿元金</th><th>実費</th><th>メモ</th><th></th></tr></thead>
+            <thead><tr><th>日付</th><th>追加元金</th><th>実費</th><th>メモ</th><th></th></tr></thead>
             <tbody id="deposit-tbody"></tbody>
           </table>
         </div>

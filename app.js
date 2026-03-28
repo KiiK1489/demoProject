@@ -378,37 +378,28 @@ function addFunds(){
   if(!p){ showToast(`ID ${id} の案件が見つかりません`,'error'); return; }
 
   const actualAdd = (!actual||actual<=0)?0:actual;
-  const addFee    = amount*(p.rate/100); // 追加元金の手数料（固定）
-  const remainingCount = p.months-p.elapsed; // 残り回収回数
+
+  // まず deposits に記録
+  if(!p.deposits) p.deposits=[];
+  p.deposits.push({date, amount, actualAmount:actualAdd||amount, note:'追加投資'});
+
+  // 現在の月支払額を保存（月額固定で月数を計算するため）
+  const fixedFinal = mrFinal(p);
+
+  // deposits から元金・実費・fee を再計算
+  p.principal   = p.deposits.reduce((s,d)=>s+(d.amount||0),0);
+  p.actualCost  = p.deposits.reduce((s,d)=>s+(d.actualAmount||d.amount||0),0);
+  p.virtualCost = Math.max(0, p.principal-p.actualCost);
+  p.fee         = p.principal*(p.rate/100);
 
   if(mode==='extend'){
-    // 月額維持: 残回数を増やす
-    // 追加分の月支払 = amount/? + addFee → ?を解く
-    // 現在の月支払 = mrFinal(p)
-    // 追加分をその月支払に乗せるため、追加回数を計算
-    // 追加月元本 = mrFinal(p) - (p.principal/p.months) - getFee(p)... 複雑なので別方式
-    // 追加元金+追加手数料を月支払額で割って追加回数を算出
-    const currentFinal = mrFinal(p);
-    const addTotalPay  = amount+addFee;
-    const addMonths    = Math.ceil(addTotalPay/currentFinal);
-    // 元金・手数料・月数を更新
-    p.principal  += amount;
-    p.fee        += addFee;
-    p.virtualCost = (p.virtualCost||0)+actualAdd;
-    p.actualCost  = p.principal-p.virtualCost;
-    p.months     += addMonths;
-  } else {
-    // 回数維持: 残回数は変えず月額を増やす
-    // 追加分は残回数で均等割り（月額に追加月元本+追加月手数料を加算）
-    p.principal  += amount;
-    p.fee        += addFee;
-    p.virtualCost = (p.virtualCost||0)+actualAdd;
-    p.actualCost  = p.principal-p.virtualCost;
-    // months は変えない → mrFinal が自動で増える
+    // 月額固定・回数を増やす
+    const newMPP          = fixedFinal - p.fee;
+    const remainPrincipal = p.principal - (p.principal/p.months)*p.elapsed;
+    if(newMPP > 0)
+      p.months = p.elapsed + Math.max(1, Math.ceil(remainPrincipal / newMPP));
   }
-
-  if(!p.deposits) p.deposits=[];
-  p.deposits.push({date,amount,actualAmount:amount-actualAdd,note:'追加投資'});
+  // 'increase': months固定 → mrFinal が自動で増える
   saveData(); renderAll();
 
   ['funds-id','funds-amount','funds-actual'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
@@ -487,58 +478,115 @@ function applyShortage(){
   if(!shortageContext) return;
   const ctx = shortageContext;
   const {id} = ctx;
-  const p=projects.find(x=>x.id===id); if(!p) return;
-  const action=document.querySelector('input[name="shortage-action"]:checked').value;
-  const isShortage = ctx.type==='shortage';
-  const diff = isShortage ? ctx.shortage : -(ctx.surplus); // 不足は正、超過は負
+  const p = projects.find(x=>x.id===id); if(!p) return;
+  const action    = document.querySelector('input[name="shortage-action"]:checked').value;
+  const isShortage= ctx.type==='shortage';
 
-  // 元金変更前の月支払を保存
-  const fixedFinal = mrFinal(p);
-  // 残り回収分の元金（まだ回収していない元金）
-  const remainPrincipal = p.principal - (p.principal/p.months)*p.elapsed;
+  /*
+   * 【正しい計算】
+   * fee = 元金 × 利率%（毎月固定）
+   *
+   * 不足の場合:
+   *   払えなかった分 = 不足額
+   *   不足のうち手数料分 = 不足額 × (fee / mrRaw)
+   *   →元金に加算（fee も元金×利率で再計算）
+   *   →実費は変えない
+   *
+   * 超過の場合:
+   *   多く払った分 = 超過額
+   *   超過のうち元本分 = 超過額 × (月元本 / mrRaw)
+   *   →元金から差し引き（fee も再計算）
+   */
 
-  if(action==='extend'){
-    // 月額固定・回数で調整
-    // 差額の手数料相当分を fee に反映
-    const feeRatio  = getFee(p) / mrRaw(p);
-    const feeAdj    = diff * feeRatio; // 不足なら+、超過なら-
-    p.fee           = Math.max(0, p.fee + feeAdj);
-    p.shortageAccum = Math.max(0, (p.shortageAccum||0) + feeAdj);
-    // 月額 = fixedFinal のまま、残り月数を再計算
-    const newMonthlyPrincipalPart = fixedFinal - p.fee;
-    if(newMonthlyPrincipalPart > 0)
-      p.months = p.elapsed + Math.max(1, Math.ceil(remainPrincipal / newMonthlyPrincipalPart));
-    p.shortageMode='extend';
+  // 調整前の値を保存
+  const curFinal = mrFinal(p);             // 現在の月支払額（切上後）
+  const curRaw   = mrRaw(p);              // 現在の月支払額（切上前）
+  const curFee   = getFee(p);             // 現在の手数料（月額）
+  const curMonthlyPrincipal = p.principal / p.months; // 月元本
 
-  } else if(action==='increase'){
-    // 回数固定・月額で調整
-    const feeRatio  = getFee(p) / mrRaw(p);
-    const feeAdj    = diff * feeRatio;
-    p.fee           = Math.max(0, p.fee + feeAdj);
-    p.shortageAccum = Math.max(0, (p.shortageAccum||0) + feeAdj);
-    // months はそのまま → mrFinal が自動で変わる
-    p.shortageMode='increase';
+  if(isShortage){
+    const shortage = ctx.shortage;
+    // ★ 不足分を全額元金に加算（実費・仮想元金は変えない）
+    p.principal    += shortage;
+    p.shortageAccum = (p.shortageAccum||0) + shortage;
+    // 元金が増えたので fee を再計算（fee = 元金 × 利率%）
+    p.fee = p.principal * (p.rate/100);
 
-  } else if(action==='rate'){
-    const inputVal=parseNum(document.getElementById('shortage-new-rate').value);
-    if(inputVal===null||inputVal<0){ showToast('利率を入力してください','error'); return; }
-    // 小数入力（<=1）なら%換算
-    const newRate = inputVal <= 1 ? inputVal*100 : inputVal;
-    const last=p.segments[p.segments.length-1];
-    if(last.startElapsed===p.elapsed) last.rate=newRate;
-    else p.segments.push({startElapsed:p.elapsed,rate:newRate});
-    p.rate   = newRate;
-    p.fee    = p.principal*(newRate/100);
-    p.planId = null;
-    // 月額固定で月数再計算
-    const newMPP = fixedFinal - p.fee;
-    if(newMPP > 0)
-      p.months = p.elapsed + Math.max(1, Math.ceil(remainPrincipal / newMPP));
+    // 残り元金（まだ回収していない元金）
+    const remainPrincipal = p.principal - curMonthlyPrincipal * p.elapsed;
+
+    if(action==='extend'){
+      // 月額固定・回数を増やす
+      // 月額 = curFinal のまま、残り月数を再計算
+      const newFee = p.fee;
+      const newMPP = curFinal - newFee;
+      if(newMPP > 0)
+        p.months = p.elapsed + Math.max(1, Math.ceil(remainPrincipal / newMPP));
+      p.shortageMode='extend';
+
+    } else if(action==='increase'){
+      // 回数固定・月額を増やす
+      // months そのまま → 元金増加で fee増加 → mrFinal が自動で増える
+      p.shortageMode='increase';
+
+    } else if(action==='rate'){
+      const inputVal = parseNum(document.getElementById('shortage-new-rate').value);
+      if(inputVal===null||inputVal<0){ showToast('利率を入力してください','error'); return; }
+      const newRate = inputVal <= 1 ? inputVal*100 : inputVal;
+      const last = p.segments[p.segments.length-1];
+      if(last.startElapsed===p.elapsed) last.rate=newRate;
+      else p.segments.push({startElapsed:p.elapsed, rate:newRate});
+      p.rate   = newRate;
+      p.fee    = p.principal*(newRate/100);
+      p.planId = null;
+      // 月額固定で月数再計算
+      const newMPP2 = curFinal - p.fee;
+      if(newMPP2 > 0)
+        p.months = p.elapsed + Math.max(1, Math.ceil(remainPrincipal / newMPP2));
+    }
+
+  } else {
+    // 超過の場合
+    const surplus = ctx.surplus;
+    // ★ 超過分を全額元金から差し引き（実費は変えない）
+    p.principal = Math.max(0, p.principal - surplus);
+    p.fee       = p.principal * (p.rate/100); // fee を再計算
+
+    // 残り元金
+    const remainPrincipal = p.principal - curMonthlyPrincipal * p.elapsed;
+
+    if(action==='extend'){
+      // 月額固定・回数を減らす
+      const newFee  = p.fee;
+      const newMPP  = curFinal - newFee;
+      if(newMPP > 0)
+        p.months = p.elapsed + Math.max(1, Math.ceil(remainPrincipal / newMPP));
+      p.shortageMode='extend';
+
+    } else if(action==='increase'){
+      // 回数固定・月額を減らす（元金減少でfee減少→mrFinal自動で減る）
+      p.shortageMode='increase';
+
+    } else if(action==='rate'){
+      const inputVal = parseNum(document.getElementById('shortage-new-rate').value);
+      if(inputVal===null||inputVal<0){ showToast('利率を入力してください','error'); return; }
+      const newRate = inputVal <= 1 ? inputVal*100 : inputVal;
+      const last = p.segments[p.segments.length-1];
+      if(last.startElapsed===p.elapsed) last.rate=newRate;
+      else p.segments.push({startElapsed:p.elapsed, rate:newRate});
+      p.rate   = newRate;
+      p.fee    = p.principal*(newRate/100);
+      p.planId = null;
+      const newMPP3 = curFinal - p.fee;
+      const remainP3= p.principal - curMonthlyPrincipal * p.elapsed;
+      if(newMPP3 > 0)
+        p.months = p.elapsed + Math.max(1, Math.ceil(remainP3 / newMPP3));
+    }
   }
   // 'none': 何もしない
 
   saveData(); renderAll(); closeShortage();
-  showToast(`案件 #${id} の調整を適用しました`,'success');
+  showToast(`案件 #${id} の調整を適用しました`, 'success');
 }
 
 function closeShortage(){
@@ -575,7 +623,6 @@ function openDetail(id){
   document.getElementById('detail-memo').value=p.memo||'';
   switchDetailTab('summary');
   renderDetailSummary(p);
-  renderDepositTable(p);
   renderRepaymentTable(p);
   document.getElementById('modal-detail').classList.remove('hidden');
 }
@@ -631,53 +678,85 @@ function renderDetailSummary(p){
   } else shRow.classList.add('hidden');
 }
 
-/* ── 入金履歴 ── */
+/* ══════════════════════════════════════
+   投資履歴（詳細タブ）
+   初回＋追加投資の確認・編集・削除
+   金額変更 → 全再計算
+══════════════════════════════════════ */
 function renderDepositTable(p){
   const tbody=document.getElementById('deposit-tbody');
+  if(!tbody) return;
   tbody.innerHTML='';
   if(!p.deposits||!p.deposits.length){
     tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--text-muted)">履歴なし</td></tr>';
     return;
   }
   p.deposits.forEach((d,i)=>{
-    const tag=i===0?'<span class="tag-init">初回</span>':'<span class="tag-add">追加</span>';
+    const isFirst = i===0;
+    const tag = isFirst
+      ?'<span class="tag-init">初回</span>'
+      :'<span class="tag-add">追加</span>';
     const tr=document.createElement('tr');
     tr.innerHTML=`
       <td><input type="date" class="h-input dep-date" value="${d.date||''}" data-i="${i}"/></td>
       <td><input type="text" class="h-input amount dep-amount" value="${Math.round(d.amount||0).toLocaleString('ja-JP')}" inputmode="numeric" data-i="${i}"/></td>
       <td><input type="text" class="h-input amount dep-actual" value="${Math.round(d.actualAmount||d.amount||0).toLocaleString('ja-JP')}" inputmode="numeric" data-i="${i}"/></td>
-      <td><div style="display:flex;gap:6px;align-items:center">${tag}<input type="text" class="h-input memo-h dep-note" value="${escAttr(d.note||'')}" placeholder="メモ" data-i="${i}"/></div></td>
-      <td><button class="h-del-btn dep-del" data-i="${i}">🗑</button></td>`;
+      <td><div style="display:flex;gap:6px;align-items:center">${tag}
+        <input type="text" class="h-input memo-h dep-note" value="${escAttr(d.note||'')}" placeholder="メモ" data-i="${i}"/>
+      </div></td>
+      <td>${isFirst?'<span style="font-size:.7rem;color:var(--text-muted)">削除不可</span>':'<button class="h-del-btn dep-del" data-i="'+i+'">🗑</button>'}</td>`;
     tbody.appendChild(tr);
   });
+
+  // カンマ入力
   tbody.querySelectorAll('.dep-amount,.dep-actual').forEach(el=>initCI(el));
+
+  // 変更時に再計算
   tbody.querySelectorAll('.dep-date,.dep-amount,.dep-actual,.dep-note').forEach(el=>{
-    el.addEventListener('blur',()=>saveDepEdit(p));
+    el.addEventListener('blur',  ()=>saveDepEdit(p));
     el.addEventListener('change',()=>saveDepEdit(p));
   });
+
+  // 削除
   tbody.querySelectorAll('.dep-del').forEach(btn=>{
     btn.addEventListener('click',()=>{
       const i=Number(btn.dataset.i);
-      if(p.deposits.length<=1){showToast('最低1件必要です','error');return;}
+      if(i===0){ showToast('初回入金は削除できません','error'); return; }
+      if(!confirm('この追加投資記録を削除して再計算しますか？')) return;
       p.deposits.splice(i,1);
-      saveData();renderDepositTable(p);renderDetailSummary(p);renderAll();
+      recalcFromDeposits(p);
+      saveData();
+      renderDepositTable(p);
+      renderDetailSummary(p);
+      renderAll();
+      showToast('削除して再計算しました');
     });
   });
 }
+
 function saveDepEdit(p){
   const tbody=document.getElementById('deposit-tbody');
+  if(!tbody) return;
+  let changed=false;
   tbody.querySelectorAll('tr').forEach((tr,i)=>{
     if(!p.deposits[i]) return;
-    const d=tr.querySelector(`.dep-date[data-i="${i}"]`);
-    const a=tr.querySelector(`.dep-amount[data-i="${i}"]`);
-    const ac=tr.querySelector(`.dep-actual[data-i="${i}"]`);
-    const n=tr.querySelector(`.dep-note[data-i="${i}"]`);
-    if(d)  p.deposits[i].date         = d.value;
-    if(a)  p.deposits[i].amount       = parseNum(a.value)||0;
-    if(ac) p.deposits[i].actualAmount = parseNum(ac.value)||0;
-    if(n)  p.deposits[i].note         = n.value;
+    const d  = tr.querySelector(`.dep-date[data-i="${i}"]`);
+    const a  = tr.querySelector(`.dep-amount[data-i="${i}"]`);
+    const ac = tr.querySelector(`.dep-actual[data-i="${i}"]`);
+    const n  = tr.querySelector(`.dep-note[data-i="${i}"]`);
+    if(d&&d.value!==p.deposits[i].date)              { p.deposits[i].date         = d.value; changed=true; }
+    const newAmt  = parseNum(a?.value)||0;
+    const newAct  = parseNum(ac?.value)||0;
+    if(a&&newAmt!==p.deposits[i].amount)             { p.deposits[i].amount       = newAmt; changed=true; }
+    if(ac&&newAct!==p.deposits[i].actualAmount)      { p.deposits[i].actualAmount = newAct; changed=true; }
+    if(n&&n.value!==p.deposits[i].note)              { p.deposits[i].note         = n.value; changed=true; }
   });
-  saveData();renderDetailSummary(p);renderAll();
+  if(!changed) return;
+  recalcFromDeposits(p);
+  saveData();
+  renderDetailSummary(p);
+  renderAll();
+  showToast('投資履歴を更新して再計算しました','success');
 }
 
 /* ── 回収履歴 ── */
@@ -737,33 +816,80 @@ function saveRepEdit(p){
  * 全回収履歴から fee・months・shortageAccum を再計算
  * 回収履歴を手動変更したときに呼ぶ
  */
+/**
+ * 回収履歴変更後の全再計算
+ * 各回収履歴の過不足を元金に積算し fee・months を再計算
+ */
+/**
+ * 投資履歴（deposits）から元金・実費・fee を再計算
+ * 投資履歴を編集・削除したときに呼ぶ
+ */
+function recalcFromDeposits(p){
+  if(!p.deposits||!p.deposits.length) return;
+
+  // 元金・実費を deposits から積み上げ
+  const newPrincipal = p.deposits.reduce((s,d)=>s+(d.amount||0),0);
+  const newActual    = p.deposits.reduce((s,d)=>s+(d.actualAmount||d.amount||0),0);
+
+  p.principal   = newPrincipal;
+  p.actualCost  = newActual;
+  p.virtualCost = Math.max(0, newPrincipal - newActual);
+  p.fee         = newPrincipal * (p.rate/100); // fee = 新元金 × rate%
+
+  // 新しい月支払額（切上後）を計算
+  const newFinal = mrFinal(p);
+  // 月元本 = 月支払額 - 手数料
+  const newMPP = newFinal - p.fee;
+
+  if(newMPP > 0){
+    // 残り回収すべき元金 = 全元金 - 既回収元金（月元本×回収回数）
+    // 既回収元金: 回収済み回収額から手数料を除いた分
+    const recoveredPrincipal = calcRecovered(p) > 0
+      ? Math.min(newPrincipal, p.elapsed * newMPP)  // 回収済み月数×月元本
+      : 0;
+    const remainPrincipal = Math.max(0, newPrincipal - recoveredPrincipal);
+    if(remainPrincipal > 0)
+      p.months = p.elapsed + Math.ceil(remainPrincipal / newMPP);
+    else
+      p.months = p.elapsed;
+  }
+}
+
 function fullRecalc(p){
   if(!p.repayments||!p.repayments.length) return;
-  const baseMonthlyPrincipal = p.principal / p.months;
-  const baseFee              = p.principal * (p.rate/100);
-  const baseRaw              = baseMonthlyPrincipal + baseFee;
-  const baseFinal            = ceilTo(baseRaw, p.roundUnit||10000);
 
-  let feeAccum = 0;
+  // 初期値（入金履歴の合計を元金として使う）
+  const origPrincipal = p.deposits
+    ? p.deposits.reduce((s,d)=>s+(d.amount||0),0)
+    : p.actualCost;
+  const origFee       = origPrincipal * (p.rate/100);
+  const origRaw       = origPrincipal/p.months + origFee;
+  const origFinal     = ceilTo(origRaw, p.roundUnit||10000);
+
+  // 各回の過不足を累積して元金に反映
+  // ★ 不足分は全額を元金に加算（実費は変えない）
+  // ★ 超過分は全額を元金から差し引き
+  let principalAdj = 0;
   p.repayments.forEach(r=>{
-    const diff = (r.amount||0) - baseFinal;
-    if(diff < -1){
-      // 不足: 手数料相当分を累積
-      const feeRatio = baseFee / baseRaw;
-      feeAccum += Math.abs(diff) * feeRatio;
-    } else if(diff > 1){
-      // 超過: 手数料超過分を相殺
-      const feeRatio = baseFee / baseRaw;
-      feeAccum -= diff * feeRatio;
+    const diff = (r.amount||0) - origFinal;
+    if(Math.abs(diff) > 1){
+      if(diff < 0){
+        principalAdj += Math.abs(diff); // 不足分を全額加算
+      } else {
+        principalAdj -= diff;           // 超過分を全額差し引き
+      }
     }
   });
 
-  p.fee           = Math.max(0, baseFee + feeAccum);
-  p.shortageAccum = Math.max(0, feeAccum);
+  // 元金・fee を更新（実費は変えない）
+  p.principal     = Math.max(0, origPrincipal + principalAdj);
+  p.fee           = p.principal * (p.rate/100);
+  p.shortageAccum = Math.max(0, principalAdj);
 
-  // 残元金から残り月数を計算（月額は baseFinal 固定）
-  const remainPrincipal = p.principal - baseMonthlyPrincipal * p.elapsed;
-  const newMPP          = baseFinal - p.fee;
+  // 残り月数を再計算（月額は origFinal 固定）
+  const newFee          = getFee(p);
+  const newMPP          = origFinal - newFee;
+  const remainPrincipal = p.principal - (origPrincipal/p.months)*p.elapsed;
   if(newMPP > 0 && remainPrincipal > 0)
     p.months = p.elapsed + Math.max(1, Math.ceil(remainPrincipal / newMPP));
 }
@@ -1001,12 +1127,7 @@ function bindEvents(){
     p.memo=document.getElementById('detail-memo').value;
     saveData();
   });
-  document.getElementById('btn-add-deposit').addEventListener('click',()=>{
-    const p=projects.find(x=>x.id===detailProjectId); if(!p) return;
-    if(!p.deposits) p.deposits=[];
-    p.deposits.push({date:todayStr(),amount:0,actualAmount:0,note:''});
-    saveData();renderDepositTable(p);renderDetailSummary(p);
-  });
+
   document.getElementById('btn-add-repayment').addEventListener('click',()=>{
     const p=projects.find(x=>x.id===detailProjectId); if(!p) return;
     if(!p.repayments) p.repayments=[];
