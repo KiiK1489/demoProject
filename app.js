@@ -487,7 +487,7 @@ function openAdjustModal(p){
   // デフォルト選択: 月数指定
   const r = document.querySelector('input[name="shortage-action"][value="months"]');
   if(r) r.checked = true;
-  document.getElementById('shortage-months-wrap').style.display = '';
+  document.getElementById('shortage-months-wrap').classList.remove('hidden');
   document.getElementById('shortage-monthly-wrap').classList.add('hidden');
   document.getElementById('shortage-preview').classList.add('hidden');
 
@@ -1239,7 +1239,7 @@ function bindEvents(){
   // 月数/月額の切り替え表示
   document.querySelectorAll('input[name="shortage-action"]').forEach(r=>{
     r.addEventListener('change',()=>{
-      document.getElementById('shortage-months-wrap').style.display  = r.value==='months'  ? '' : 'none';
+      document.getElementById('shortage-months-wrap').classList.toggle('hidden', r.value!=='months');
       document.getElementById('shortage-monthly-wrap').classList.toggle('hidden', r.value!=='monthly');
       updateShortagePreview();
     });
