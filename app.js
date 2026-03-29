@@ -513,10 +513,14 @@ function applyShortage(){
   // ── 不足/超過を元金に反映（追加投資の場合はスキップ） ──
   if(ctx.type!=='funds'){
     if(isShortage){
+      // 不足: 元金に加算 → feeも再計算
       p.principal    += ctx.shortage;
       p.shortageAccum = (p.shortageAccum||0) + ctx.shortage;
+      p.fee = p.principal * (p.rate/100);
     } else {
+      // 超過: 元金から差し引く。feeは変えない（月支払額が変わらないように）
       p.principal = Math.max(0, p.principal - ctx.surplus);
+      // p.fee はそのまま → 月支払額 = 元金/月数 + fee は fee固定なので変わらない
     }
   }
 
