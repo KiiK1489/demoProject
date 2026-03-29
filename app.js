@@ -630,13 +630,22 @@ function renderDetailSummary(p){
   document.getElementById('ds-monthly').textContent      = fmt(rawM);
   document.getElementById('ds-total-months').textContent = `${p.months}回`;
   // 利益率 = 総手数料(fee×月数) ÷ 実費
-  const actualCostVal = p.actualCost||p.principal;
-  const totalFee      = fee*p.months;
-  const profitRate    = actualCostVal>0 ? totalFee/actualCostVal : 0;
-  document.getElementById('ds-profit-rate').textContent  = profitRate.toFixed(3);
-  // 利益見込み = mrFinal×months - 元金（手数料含む総支払 - 元金回収分）
-  const profitExpected = mrFinal(p)*p.months - p.principal;
-  document.getElementById('ds-profit-expected').textContent = fmt(Math.max(0,profitExpected));
+  // 利益率（%） = 利益 ÷ 売上 × 100
+  // 売上 = 総支払見込み（mrFinal × months）
+  // 利益 = 総支払見込み - 元金（= 手数料利益見込み）
+  const totalPayFinal  = mrFinal(p) * p.months;
+  const feeProfit      = Math.max(0, totalPayFinal - p.principal); // 手数料利益見込み
+  const profitRatePct  = totalPayFinal > 0 ? (feeProfit / totalPayFinal) * 100 : 0;
+  document.getElementById('ds-profit-rate').textContent = profitRatePct.toFixed(1) + '%';
+
+  // 利益見込み = 手数料利益見込み + 元金差益
+  const profitExpected = feeProfit + Math.max(0, capProf);
+  document.getElementById('ds-profit-expected').textContent = fmt(profitExpected);
+
+  // 実費回収率 = 累計回収 ÷ 実費 × 100
+  const actualCostVal = p.actualCost || p.principal;
+  const actualRecoveryRate = actualCostVal > 0 ? Math.min((rec / actualCostVal) * 100, 999) : 0;
+  document.getElementById('ds-actual-recovery-rate').textContent = actualRecoveryRate.toFixed(1) + '%';
   document.getElementById('ds-remain-months').textContent= `${remainM}回`;
   document.getElementById('ds-recovered').textContent    = fmt(rec);
   document.getElementById('ds-remaining').textContent    = fmt(debt);
