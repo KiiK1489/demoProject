@@ -531,10 +531,6 @@ function applyShortage(){
 
   // ── 指定方式で残りを再計算 ──
   if(action==='months'){
-    // 残り月数を直接指定
-    const newRemainMonths = parseNum(document.getElementById('shortage-new-months').value);
-    if(!newRemainMonths||newRemainMonths<1){ showToast('残り月数を入力してください','error'); return; }
-
     // 残り月数指定 → 残り分を均等割り
     const newRemainMonths = parseNum(document.getElementById('shortage-new-months').value);
     if(!newRemainMonths||newRemainMonths<1){ showToast('残り月数を入力してください','error'); return; }
