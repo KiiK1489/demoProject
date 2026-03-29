@@ -1236,13 +1236,20 @@ function bindEvents(){
   document.getElementById('modal-shortage').addEventListener('click',e=>{
     if(e.target===document.getElementById('modal-shortage')){ closeShortage(); showToast('キャンセルしました',''); }
   });
-  // 月数/月額の切り替え表示
+  // 月数/月額の切り替え表示（click と change 両方に対応）
+  function updateShortageWrap(){
+    const checked = document.querySelector('input[name="shortage-action"]:checked')?.value;
+    document.getElementById('shortage-months-wrap').classList.toggle('hidden', checked!=='months');
+    document.getElementById('shortage-monthly-wrap').classList.toggle('hidden', checked!=='monthly');
+    updateShortagePreview();
+  }
   document.querySelectorAll('input[name="shortage-action"]').forEach(r=>{
-    r.addEventListener('change',()=>{
-      document.getElementById('shortage-months-wrap').classList.toggle('hidden', r.value!=='months');
-      document.getElementById('shortage-monthly-wrap').classList.toggle('hidden', r.value!=='monthly');
-      updateShortagePreview();
-    });
+    r.addEventListener('change', updateShortageWrap);
+    r.addEventListener('click',  updateShortageWrap);
+  });
+  // ラベルクリック時も反応するようラベルにもバインド
+  document.querySelectorAll('.shortage-options .radio-label').forEach(lbl=>{
+    lbl.addEventListener('click', ()=>setTimeout(updateShortageWrap, 0));
   });
   // 入力値変更でプレビュー更新
   ['shortage-new-months','shortage-new-monthly'].forEach(id=>{
