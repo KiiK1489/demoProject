@@ -431,23 +431,23 @@ function recordPayment(id){
     showToast(`回収金額が残債(${fmt(debt)})を超えています`,'error'); return;
   }
 
-  if(!p.repayments) p.repayments=[];
-  p.repayments.push({date, amount});
-  p.elapsed++;
-  p.recovered = calcRecovered(p);
-
   const expected = mrFinal(p);
   const diff     = amount - expected;
 
   if(diff < -1 && calcDebt(p) > 0){
-    // 不足
-    shortageContext = {id, amount, expected, shortage: expected-amount, type:'shortage'};
+    // 不足 → モーダルで選択してから記録
+    shortageContext = {id, date, amount, expected, shortage: expected-amount, type:'shortage'};
     openAdjustModal(p);
-  } else if(diff > 1 && calcDebt(p) >= 0){
-    // 超過
-    shortageContext = {id, amount, expected, surplus: amount-expected, type:'surplus'};
+  } else if(diff > 1){
+    // 超過 → モーダルで選択してから記録
+    shortageContext = {id, date, amount, expected, surplus: amount-expected, type:'surplus'};
     openAdjustModal(p);
   } else {
+    // ぴったり → 即記録
+    if(!p.repayments) p.repayments=[];
+    p.repayments.push({date, amount});
+    p.elapsed++;
+    p.recovered = calcRecovered(p);
     saveData(); renderAll();
     showToast(`案件 #${id} 回収を記録しました（${fmt(amount)}）`,'success');
   }
@@ -489,27 +489,15 @@ function applyShortage(){
   const action    = document.querySelector('input[name="shortage-action"]:checked').value;
   const isShortage= ctx.type==='shortage';
 
-  /*
-   * 【正しい計算】
-   * fee = 元金 × 利率%（毎月固定）
-   *
-   * 不足の場合:
-   *   払えなかった分 = 不足額
-   *   不足のうち手数料分 = 不足額 × (fee / mrRaw)
-   *   →元金に加算（fee も元金×利率で再計算）
-   *   →実費は変えない
-   *
-   * 超過の場合:
-   *   多く払った分 = 超過額
-   *   超過のうち元本分 = 超過額 × (月元本 / mrRaw)
-   *   →元金から差し引き（fee も再計算）
-   */
+  // 調整前の値を先に保存（回収記録前の値が必要）
+  const curFinal            = mrFinal(p);           // 元の月支払額（切上後）
+  const curMonthlyPrincipal = p.principal / p.months; // 元の月元本
 
-  // 調整前の値を保存
-  const curFinal = mrFinal(p);             // 現在の月支払額（切上後）
-  const curRaw   = mrRaw(p);              // 現在の月支払額（切上前）
-  const curFee   = getFee(p);             // 現在の手数料（月額）
-  const curMonthlyPrincipal = p.principal / p.months; // 月元本
+  // 回収を記録（キャンセル時は呼ばれない）
+  if(!p.repayments) p.repayments=[];
+  p.repayments.push({date: ctx.date, amount: ctx.amount});
+  p.elapsed++;
+  p.recovered = calcRecovered(p);
 
   // ── 元金を調整 ──
   if(isShortage){
@@ -1088,8 +1076,12 @@ function bindEvents(){
 
   // 不足
   document.getElementById('shortage-confirm').addEventListener('click',applyShortage);
-  document.getElementById('shortage-cancel').addEventListener('click',()=>{ closeShortage(); saveData(); renderAll(); showToast('記録しました（調整なし）','success'); });
-  document.getElementById('modal-shortage').addEventListener('click',e=>{ if(e.target===document.getElementById('modal-shortage')){ closeShortage(); saveData(); renderAll(); } });
+  document.getElementById('shortage-cancel').addEventListener('click',()=>{
+    // キャンセル: 回収も調整もしない
+    closeShortage();
+    showToast('キャンセルしました','');
+  });
+  document.getElementById('modal-shortage').addEventListener('click',e=>{ if(e.target===document.getElementById('modal-shortage')){ closeShortage(); showToast('キャンセルしました',''); } });
   document.querySelectorAll('input[name="shortage-action"]').forEach(r=>{
     r.addEventListener('change',()=>{
       document.getElementById('shortage-rate-wrap').classList.toggle('hidden',r.value!=='rate');
