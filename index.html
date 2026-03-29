@@ -210,35 +210,45 @@
 <!-- 不足時調整 -->
 <div class="modal-overlay hidden" id="modal-shortage">
   <div class="modal modal-shortage">
-    <h3 class="modal-title" id="adjust-modal-title" style="margin-bottom:10px">⚠ 支払額の調整</h3>
+    <h3 class="modal-title" id="adjust-modal-title" style="margin-bottom:10px">⚠ 残り分の再計算</h3>
     <div class="shortage-info" id="shortage-info"></div>
+
+    <div class="shortage-remain-info" id="shortage-remain-info"></div>
+
     <div class="shortage-options">
-      <p class="form-label" style="margin-bottom:8px">どのように調整しますか？</p>
-      <p style="font-size:.75rem;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
-        ※ 不足の場合：手数料分を元金に加算（実費は変わりません）<br>※ 超過の場合：超過分を手数料から相殺します
-      </p>
+      <p class="form-label" style="margin-bottom:10px">残り分をどう設定しますか？</p>
+
+      <!-- 残り月数で指定 -->
       <label class="radio-label" style="margin-bottom:8px">
-        <input type="radio" name="shortage-action" value="extend" checked/>
-        <span class="radio-custom"></span>月額維持・回数を増やす
+        <input type="radio" name="shortage-action" value="months" checked/>
+        <span class="radio-custom"></span>残り回収月数を指定
       </label>
+      <div id="shortage-months-wrap" style="padding:0 4px 10px">
+        <input class="form-input" type="number" id="shortage-new-months" min="1" inputmode="numeric" placeholder="例: 8"/>
+      </div>
+
+      <!-- 残り月支払額で指定 -->
       <label class="radio-label" style="margin-bottom:8px">
-        <input type="radio" name="shortage-action" value="increase"/>
-        <span class="radio-custom"></span>回数維持・月額を増やす
+        <input type="radio" name="shortage-action" value="monthly"/>
+        <span class="radio-custom"></span>残り月支払額を指定（手数料込み）
       </label>
-      <label class="radio-label" style="margin-bottom:8px">
-        <input type="radio" name="shortage-action" value="rate"/>
-        <span class="radio-custom"></span>利益率を変更して再計算
-      </label>
+      <div id="shortage-monthly-wrap" class="hidden" style="padding:0 4px 10px">
+        <input class="form-input comma-input" type="text" id="shortage-new-monthly" inputmode="numeric" placeholder="例: 50,000"/>
+      </div>
+
+      <!-- 調整しない -->
       <label class="radio-label">
         <input type="radio" name="shortage-action" value="none"/>
-        <span class="radio-custom"></span>調整しない
+        <span class="radio-custom"></span>調整しない（そのまま記録のみ）
       </label>
     </div>
-    <div class="shortage-rate-input hidden" id="shortage-rate-wrap">
-      <label class="form-label" style="margin-top:12px;display:block">新しい利益率（%）</label>
-      <input class="form-input" type="number" id="shortage-new-rate" min="0" step="0.1" inputmode="decimal" style="margin-top:6px"/>
+
+    <!-- プレビュー -->
+    <div class="shortage-preview hidden" id="shortage-preview">
+      <span id="shortage-preview-text"></span>
     </div>
-    <div class="modal-actions" style="margin-top:20px">
+
+    <div class="modal-actions" style="margin-top:16px">
       <button class="btn btn-ghost" id="shortage-cancel">キャンセル</button>
       <button class="btn btn-primary" id="shortage-confirm">適用する</button>
     </div>
@@ -326,6 +336,46 @@
           <div class="detail-section-header"><span class="detail-section-title">備考</span></div>
           <div style="padding:14px 16px">
             <input class="form-input" type="text" id="detail-memo" placeholder="備考を入力…"/>
+          </div>
+        </div>
+
+        <!-- 返済条件変更 -->
+        <div class="detail-section" style="margin-top:14px">
+          <div class="detail-section-header">
+            <span class="detail-section-title">🔄 返済条件変更</span>
+          </div>
+          <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+            <p class="condition-note" id="condition-current-info"></p>
+
+            <div class="form-field">
+              <label class="form-label">変更方式</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <label class="radio-label" style="flex:1;min-width:130px">
+                  <input type="radio" name="condition-type" value="months" checked/>
+                  <span class="radio-custom"></span>残り月数を指定
+                </label>
+                <label class="radio-label" style="flex:1;min-width:130px">
+                  <input type="radio" name="condition-type" value="monthly"/>
+                  <span class="radio-custom"></span>月支払額を指定
+                </label>
+              </div>
+            </div>
+
+            <div class="form-field" id="condition-months-wrap">
+              <label class="form-label" for="condition-new-months">残り回収月数</label>
+              <input class="form-input" type="number" id="condition-new-months" min="1" inputmode="numeric" placeholder="例: 6"/>
+            </div>
+
+            <div class="form-field hidden" id="condition-monthly-wrap">
+              <label class="form-label" for="condition-new-monthly">月支払額（手数料込み）</label>
+              <input class="form-input comma-input" type="text" id="condition-new-monthly" inputmode="numeric" placeholder="例: 50,000"/>
+            </div>
+
+            <div class="condition-preview hidden" id="condition-preview">
+              <span id="condition-preview-text"></span>
+            </div>
+
+            <button class="btn btn-primary" id="btn-apply-condition">変更を適用する</button>
           </div>
         </div>
       </div>

@@ -394,24 +394,15 @@ function addFunds(){
   // deposits から元金・実費・fee を再計算（仮想元金含む）
   recalcFromDeposits(p);
 
-  if(mode==='extend'){
-    // 月額固定・回数を増やす
-    // 月元本 = 月支払額 - fee （変更後の fee を使う）
-    const newMPP = fixedFinal - p.fee;
-    // 残り元金 = 全元金 - (月元本 × 回収済み回数)
-    const newMonthlyP     = p.months > 0 ? p.principal/p.months : 0;
-    const remainPrincipal = Math.max(0, p.principal - newMonthlyP * p.elapsed);
-    if(newMPP > 0)
-      p.months = p.elapsed + Math.max(1, Math.ceil(remainPrincipal / newMPP));
-  }
-  // 'increase': months固定 → mrFinal が自動で増える
-  // 詳細モーダルが開いていれば更新
-  if(detailProjectId) { const dp=projects.find(x=>x.id===id); if(dp) renderDetailSummary(dp); }
-  saveData(); renderAll();
+  // 追加後に再計算モーダルを表示
+  shortageContext = {
+    id, date, amount:0, expected:0, shortage:0, surplus:0,
+    type:'funds' // 追加投資用
+  };
+  openAdjustModal(p);
 
-  ['funds-id','funds-amount','funds-actual'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['funds-id','funds-amount','funds-actual'].forEach(fid=>{ const el=document.getElementById(fid); if(el) el.value=''; });
   document.getElementById('funds-date').value=todayStr();
-  showToast(`案件 #${id} に追加投資を反映しました`,'success');
 }
 
 /* ══════════════════════════════════════
@@ -462,22 +453,44 @@ function openAdjustModal(p){
   const isShortage = ctx.type==='shortage';
   const diff = isShortage ? ctx.shortage : ctx.surplus;
   const diffLabel = isShortage ? '不足額' : '超過額';
+  const diffColor = isShortage ? 'var(--red)' : 'var(--green)';
 
-  document.getElementById('shortage-info').innerHTML=
-    `想定支払額: <strong>${fmt(ctx.expected)}</strong><br>`+
-    `実際の支払額: <strong>${fmt(ctx.amount)}</strong><br>`+
-    `<span style="color:${isShortage?'var(--red)':'var(--green)'}">${diffLabel}: <strong>${fmt(diff)}</strong></span>`;
+  // 残り元金・残り手数料を計算（既回収分を除く）
+  // 月元本 = 元金÷月数
+  // 既回収元本 = 月元本 × elapsed
+  // 残り元金 = 元金 - 既回収元本
+  const monthlyP = p.principal / p.months;
+  const recoveredP = monthlyP * p.elapsed;
+  const remainP = Math.max(0, p.principal - recoveredP);
+  const remainFee = remainP * (p.rate/100); // 残り元金への手数料
+  const remainDebt = remainP + remainFee;   // 残債（元本+手数料）
 
-  // 不足・超過で選択肢のラベルを切り替え
-  const extLabel = isShortage ? '月額維持・回数を増やす' : '月額維持・回数を減らす';
-  const incLabel = isShortage ? '回数維持・月額を増やす' : '回数維持・月額を減らす';
-  document.querySelector('input[name="shortage-action"][value="extend"]').closest('.radio-label').lastChild.textContent = extLabel;
-  document.querySelector('input[name="shortage-action"][value="increase"]').closest('.radio-label').lastChild.textContent = incLabel;
+  let infoHtml = '';
+  if(ctx.type==='funds'){
+    infoHtml = `💴 追加投資が完了しました。残り分の返済条件を設定してください。`;
+  } else {
+    infoHtml = `<span style="color:${diffColor}">${diffLabel}: <strong>${fmt(diff)}</strong></span>　`+
+      `想定: <strong>${fmt(ctx.expected)}</strong> → 実際: <strong>${fmt(ctx.amount)}</strong>`;
+  }
+  document.getElementById('shortage-info').innerHTML = infoHtml;
 
-  const r=document.querySelector(`input[name="shortage-action"][value="${p.shortageMode||'extend'}"]`);
-  if(r) r.checked=true;
-  document.getElementById('shortage-rate-wrap').classList.add('hidden');
-  document.getElementById('shortage-new-rate').value=p.rate;
+  document.getElementById('shortage-remain-info').innerHTML=
+    `残り元金: <strong>${fmt(remainP)}</strong>　`+
+    `残り手数料: <strong>${fmt(remainFee)}</strong>　`+
+    `残債合計: <strong>${fmt(remainDebt)}</strong>`;
+
+  // 現在の月数・月額をデフォルト値としてセット
+  const remainMonths = Math.max(1, p.months - p.elapsed);
+  document.getElementById('shortage-new-months').value = remainMonths;
+  document.getElementById('shortage-new-monthly').value = '';
+
+  // デフォルト選択: 月数指定
+  const r = document.querySelector('input[name="shortage-action"][value="months"]');
+  if(r) r.checked = true;
+  document.getElementById('shortage-months-wrap').style.display = '';
+  document.getElementById('shortage-monthly-wrap').classList.add('hidden');
+  document.getElementById('shortage-preview').classList.add('hidden');
+
   document.getElementById('modal-shortage').classList.remove('hidden');
 }
 
@@ -489,65 +502,63 @@ function applyShortage(){
   const action    = document.querySelector('input[name="shortage-action"]:checked').value;
   const isShortage= ctx.type==='shortage';
 
-  // 調整前の値を先に保存（回収記録前の値が必要）
-  const curFinal            = mrFinal(p);           // 元の月支払額（切上後）
-  const curMonthlyPrincipal = p.principal / p.months; // 元の月元本
-
-  // 回収を記録（キャンセル時は呼ばれない）
-  if(!p.repayments) p.repayments=[];
-  p.repayments.push({date: ctx.date, amount: ctx.amount});
-  p.elapsed++;
-  p.recovered = calcRecovered(p);
-
-  // ── 元金を調整 ──
-  if(isShortage){
-    // 不足分を全額元金に加算（実費・仮想元金は変えない）
-    p.principal    += ctx.shortage;
-    p.shortageAccum = (p.shortageAccum||0) + ctx.shortage;
-  } else {
-    // 超過分を全額元金から差し引き（実費は変えない）
-    p.principal = Math.max(0, p.principal - ctx.surplus);
+  // ── 回収を記録（追加投資タイプはスキップ） ──
+  if(ctx.type!=='funds'){
+    if(!p.repayments) p.repayments=[];
+    p.repayments.push({date: ctx.date, amount: ctx.amount});
+    p.elapsed++;
+    p.recovered = calcRecovered(p);
   }
-  // fee を新しい元金で再計算
-  p.fee = p.principal * (p.rate/100);
 
-  // ── 残り元金を正しく計算 ──
-  // 回収済み回数分の月元本（変更後の元金÷月数×回収回数）を差し引く
-  // ※ 月数はまだ変わっていないので curMonths を使う
-  const newMonthlyPrincipal = p.principal / p.months;
-  const remainPrincipal     = Math.max(0, p.principal - newMonthlyPrincipal * p.elapsed);
-
-  // ── 選択された方式で月数 or 月額を調整 ──
-  if(action==='extend'){
-    // 月額固定・回数を増減
-    // 月額 = curFinal のまま。月元本 = curFinal - 新fee
-    const newMPP = curFinal - p.fee;
-    if(newMPP > 0)
-      p.months = p.elapsed + Math.max(1, Math.ceil(remainPrincipal / newMPP));
-    else
-      p.months = p.elapsed + 1;
-    p.shortageMode = 'extend';
-
-  } else if(action==='increase'){
-    // 回数固定・月額を増減（months変えない → fee変化でmrFinal自動変化）
-    p.shortageMode = 'increase';
-
-  } else if(action==='rate'){
-    const inputVal = parseNum(document.getElementById('shortage-new-rate').value);
-    if(inputVal===null||inputVal<0){ showToast('利率を入力してください','error'); return; }
-    const newRate = inputVal <= 1 ? inputVal*100 : inputVal;
-    const last = p.segments[p.segments.length-1];
-    if(last.startElapsed===p.elapsed) last.rate=newRate;
-    else p.segments.push({startElapsed:p.elapsed, rate:newRate});
-    p.rate   = newRate;
-    p.fee    = p.principal*(newRate/100);
-    p.planId = null;
-    // 月額固定で月数再計算
-    const newMPP2 = curFinal - p.fee;
-    if(newMPP2 > 0)
-      p.months = p.elapsed + Math.max(1, Math.ceil(remainPrincipal / newMPP2));
+  // ── 不足/超過を元金に反映（追加投資の場合はスキップ） ──
+  if(ctx.type!=='funds'){
+    if(isShortage){
+      p.principal    += ctx.shortage;
+      p.shortageAccum = (p.shortageAccum||0) + ctx.shortage;
+    } else {
+      p.principal = Math.max(0, p.principal - ctx.surplus);
+    }
   }
-  // 'none': 何もしない
+
+  // ── 残り元金・残り手数料を計算 ──
+  // 月元本 = 元金 / 月数（既存の月数ベース）
+  const monthlyPrincipal   = p.principal / p.months;
+  const recoveredPrincipal = monthlyPrincipal * p.elapsed;
+  const remainPrincipal    = Math.max(0, p.principal - recoveredPrincipal);
+  // 残り手数料 = 残り元金 × 利率%
+  const remainFee          = remainPrincipal * (p.rate/100);
+  const remainTotal        = remainPrincipal + remainFee; // 残債合計
+
+  // ── 指定方式で残りを再計算 ──
+  if(action==='months'){
+    // 残り月数を直接指定
+    const newRemainMonths = parseNum(document.getElementById('shortage-new-months').value);
+    if(!newRemainMonths||newRemainMonths<1){ showToast('残り月数を入力してください','error'); return; }
+
+    // 残り月数指定 → 残り分を均等割り
+    const newRemainMonths = parseNum(document.getElementById('shortage-new-months').value);
+    if(!newRemainMonths||newRemainMonths<1){ showToast('残り月数を入力してください','error'); return; }
+    const newTotalMonths = p.elapsed + newRemainMonths;
+    // fee: 残り元金ベースの手数料を全体に換算
+    // 月支払(切上前) = remainTotal/newRemainMonths
+    // fee = 月支払 - 月元本 = remainTotal/newRemainMonths - p.principal/newTotalMonths
+    const newRawMonthly       = remainTotal / newRemainMonths;
+    const newMonthlyPrincipal = p.principal / newTotalMonths;
+    p.fee    = Math.max(0, newRawMonthly - newMonthlyPrincipal);
+    p.months = newTotalMonths;
+
+  } else if(action==='monthly'){
+    // 月支払額指定（切上後）→ 残り月数を逆算
+    const newMonthlyFinal = parseNum(document.getElementById('shortage-new-monthly').value?.replace(/,/g,''));
+    if(!newMonthlyFinal||newMonthlyFinal<=0){ showToast('月支払額を入力してください','error'); return; }
+    // 残り月数 = ceil(残債合計 / 月支払額)
+    const newRemainMonths     = Math.max(1, Math.ceil(remainTotal / newMonthlyFinal));
+    const newTotalMonths      = p.elapsed + newRemainMonths;
+    const newMonthlyPrincipal = p.principal / newTotalMonths;
+    p.fee    = Math.max(0, newMonthlyFinal - newMonthlyPrincipal);
+    p.months = newTotalMonths;
+  }
+  // 'none': 何もしない（元金調整のみ）
 
   // 詳細モーダルが開いていれば更新
   if(detailProjectId === id) renderDetailSummary(p);
@@ -558,6 +569,44 @@ function applyShortage(){
 function closeShortage(){
   document.getElementById('modal-shortage').classList.add('hidden');
   shortageContext=null;
+}
+
+function updateShortagePreview(){
+  if(!shortageContext) return;
+  const p = projects.find(x=>x.id===shortageContext.id);
+  if(!p) return;
+  const action = document.querySelector('input[name="shortage-action"]:checked')?.value;
+  const preview = document.getElementById('shortage-preview');
+  const previewText = document.getElementById('shortage-preview-text');
+
+  const isShortage = shortageContext.type==='shortage';
+  const adj = isShortage ? shortageContext.shortage : -shortageContext.surplus;
+  const newPrincipal = Math.max(0, p.principal + adj);
+  const monthlyP = newPrincipal / p.months;
+  const recoveredP = monthlyP * p.elapsed;
+  const remainP = Math.max(0, newPrincipal - recoveredP);
+  const remainFee = remainP * (p.rate/100);
+
+  if(action==='months'){
+    const nm = parseNum(document.getElementById('shortage-new-months').value);
+    if(!nm||nm<1){ preview.classList.add('hidden'); return; }
+    const rawM = (remainP + remainFee) / nm;
+    const finalM = ceilTo(rawM, p.roundUnit||10000);
+    previewText.innerHTML =
+      `月支払額: <strong>${fmt(finalM)}</strong>（切上前: ${fmt(rawM)}）　`+
+      `残り${nm}回　総残支払: <strong>${fmt(finalM*nm)}</strong>`;
+    preview.classList.remove('hidden');
+
+  } else if(action==='monthly'){
+    const rawM = parseNum(document.getElementById('shortage-new-monthly').value?.replace(/,/g,''));
+    if(!rawM||rawM<=0){ preview.classList.add('hidden'); return; }
+    const nm = Math.max(1, Math.ceil((remainP + remainFee) / rawM));
+    previewText.innerHTML =
+      `残り回数: <strong>${nm}回</strong>　総残支払: <strong>${fmt(rawM*nm)}</strong>`;
+    preview.classList.remove('hidden');
+  } else {
+    preview.classList.add('hidden');
+  }
 }
 
 /* ══════════════════════════════════════
@@ -589,10 +638,114 @@ function openDetail(id){
   document.getElementById('detail-memo').value=p.memo||'';
   switchDetailTab('summary');
   renderDetailSummary(p);
+  renderDepositTable(p);
   renderRepaymentTable(p);
+  initConditionPanel(p);
   document.getElementById('modal-detail').classList.remove('hidden');
 }
 function closeDetail(){ document.getElementById('modal-detail').classList.add('hidden'); detailProjectId=null; }
+
+/* ══════════════════════════════════════
+   返済条件変更パネル（詳細→設定タブ）
+   任意タイミングで残り月数 or 月支払額を変更
+   回収済み分はそのまま・残り分を再計算
+══════════════════════════════════════ */
+function initConditionPanel(p){
+  // 現在の状況を表示
+  const monthlyP  = p.months>0?p.principal/p.months:0;
+  const recoveredP= monthlyP*p.elapsed;
+  const remainP   = Math.max(0,p.principal-recoveredP);
+  const remainFee = remainP*(p.rate/100);
+  const remainTotal=remainP+remainFee;
+  const remainM   = Math.max(0,p.months-p.elapsed);
+
+  const infoEl=document.getElementById('condition-current-info');
+  if(infoEl) infoEl.textContent=
+    `現在: 残り${remainM}回 ／ 残債 ${fmt(remainTotal)} （残り元金 ${fmt(remainP)} + 残り手数料 ${fmt(remainFee)}）`;
+
+  // デフォルト: 月数指定、現在の残り月数をセット
+  const mTypeR=document.querySelector('input[name="condition-type"][value="months"]');
+  if(mTypeR) mTypeR.checked=true;
+  const mW=document.getElementById('condition-months-wrap');
+  const mlyW=document.getElementById('condition-monthly-wrap');
+  if(mW)   mW.classList.remove('hidden');
+  if(mlyW) mlyW.classList.add('hidden');
+
+  const nmEl=document.getElementById('condition-new-months');
+  if(nmEl) nmEl.value=remainM;
+  const nmlyEl=document.getElementById('condition-new-monthly');
+  if(nmlyEl) nmlyEl.value='';
+
+  updateConditionPreview(p);
+}
+
+function updateConditionPreview(p){
+  const type=document.querySelector('input[name="condition-type"]:checked')?.value;
+  const prevEl=document.getElementById('condition-preview');
+  const prevText=document.getElementById('condition-preview-text');
+  if(!prevEl||!prevText) return;
+
+  const monthlyP  = p.months>0?p.principal/p.months:0;
+  const recoveredP= monthlyP*p.elapsed;
+  const remainP   = Math.max(0,p.principal-recoveredP);
+  const remainFee = remainP*(p.rate/100);
+  const remainTotal=remainP+remainFee;
+
+  if(type==='months'){
+    const nm=parseNum(document.getElementById('condition-new-months')?.value);
+    if(!nm||nm<1){ prevEl.classList.add('hidden'); return; }
+    const rawMonthly=remainTotal/nm;
+    const finalMonthly=ceilTo(rawMonthly,p.roundUnit||10000);
+    prevEl.classList.remove('hidden');
+    prevText.innerHTML=
+      `残り${nm}回 ／ 新しい月支払額: <strong>${fmt(finalMonthly)}</strong>`+
+      `<br>切上前: ${fmt(rawMonthly)} ／ 総残債: ${fmt(finalMonthly*nm)}`;
+  } else {
+    const rawM=parseNum(document.getElementById('condition-new-monthly')?.value?.replace(/,/g,''));
+    if(!rawM||rawM<=0){ prevEl.classList.add('hidden'); return; }
+    const nm=Math.max(1,Math.ceil(remainTotal/rawM));
+    const finalMonthly=ceilTo(remainTotal/nm,p.roundUnit||10000);
+    prevEl.classList.remove('hidden');
+    prevText.innerHTML=
+      `残り${nm}回 ／ 月支払額: <strong>${fmt(finalMonthly)}</strong>`+
+      `<br>残債合計: ${fmt(remainTotal)} ／ 総残払: ${fmt(finalMonthly*nm)}`;
+  }
+}
+
+function applyConditionChange(){
+  const p=projects.find(x=>x.id===detailProjectId); if(!p) return;
+  const type=document.querySelector('input[name="condition-type"]:checked')?.value;
+
+  const monthlyP  = p.months>0?p.principal/p.months:0;
+  const recoveredP= monthlyP*p.elapsed;
+  const remainP   = Math.max(0,p.principal-recoveredP);
+  const remainFee = remainP*(p.rate/100);
+  const remainTotal=remainP+remainFee;
+
+  if(type==='months'){
+    const nm=parseNum(document.getElementById('condition-new-months')?.value);
+    if(!nm||nm<1){ showToast('残り月数を入力してください','error'); return; }
+    const newTotalMonths=p.elapsed+nm;
+    const rawMonthly    =remainTotal/nm;
+    const newMonthlyP   =p.principal/newTotalMonths;
+    p.fee   =Math.max(0,rawMonthly-newMonthlyP);
+    p.months=newTotalMonths;
+  } else {
+    const rawM=parseNum(document.getElementById('condition-new-monthly')?.value?.replace(/,/g,''));
+    if(!rawM||rawM<=0){ showToast('月支払額を入力してください','error'); return; }
+    const nm=Math.max(1,Math.ceil(remainTotal/rawM));
+    const newTotalMonths=p.elapsed+nm;
+    const newMonthlyP   =p.principal/newTotalMonths;
+    p.fee   =Math.max(0,rawM-newMonthlyP);
+    p.months=newTotalMonths;
+  }
+
+  saveData();
+  renderDetailSummary(p);
+  initConditionPanel(p);
+  renderAll();
+  showToast('返済条件を変更しました','success');
+}
 
 function switchDetailTab(name){
   document.querySelectorAll('.detail-tab').forEach(t=>t.classList.toggle('active',t.dataset.dtab===name));
@@ -1077,16 +1230,27 @@ function bindEvents(){
   // 不足
   document.getElementById('shortage-confirm').addEventListener('click',applyShortage);
   document.getElementById('shortage-cancel').addEventListener('click',()=>{
-    // キャンセル: 回収も調整もしない
     closeShortage();
     showToast('キャンセルしました','');
   });
-  document.getElementById('modal-shortage').addEventListener('click',e=>{ if(e.target===document.getElementById('modal-shortage')){ closeShortage(); showToast('キャンセルしました',''); } });
+  document.getElementById('modal-shortage').addEventListener('click',e=>{
+    if(e.target===document.getElementById('modal-shortage')){ closeShortage(); showToast('キャンセルしました',''); }
+  });
+  // 月数/月額の切り替え表示
   document.querySelectorAll('input[name="shortage-action"]').forEach(r=>{
     r.addEventListener('change',()=>{
-      document.getElementById('shortage-rate-wrap').classList.toggle('hidden',r.value!=='rate');
+      document.getElementById('shortage-months-wrap').style.display  = r.value==='months'  ? '' : 'none';
+      document.getElementById('shortage-monthly-wrap').classList.toggle('hidden', r.value!=='monthly');
+      updateShortagePreview();
     });
   });
+  // 入力値変更でプレビュー更新
+  ['shortage-new-months','shortage-new-monthly'].forEach(id=>{
+    document.getElementById(id)?.addEventListener('input', updateShortagePreview);
+  });
+  // カンマ入力
+  const smEl = document.getElementById('shortage-new-monthly');
+  if(smEl) initCI(smEl);
 
   // 詳細
   document.getElementById('detail-close').addEventListener('click',closeDetail);
@@ -1114,6 +1278,27 @@ function bindEvents(){
     p.memo=document.getElementById('detail-memo').value;
     saveData();
   });
+
+  // 返済条件変更
+  document.querySelectorAll('input[name="condition-type"]').forEach(r=>{
+    r.addEventListener('change',()=>{
+      const p=projects.find(x=>x.id===detailProjectId); if(!p) return;
+      document.getElementById('condition-months-wrap').classList.toggle('hidden', r.value!=='months');
+      document.getElementById('condition-monthly-wrap').classList.toggle('hidden', r.value!=='monthly');
+      updateConditionPreview(p);
+    });
+  });
+  ['condition-new-months','condition-new-monthly'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el){
+      el.addEventListener('input',()=>{ const p=projects.find(x=>x.id===detailProjectId); if(p) updateConditionPreview(p); });
+      el.addEventListener('change',()=>{ const p=projects.find(x=>x.id===detailProjectId); if(p) updateConditionPreview(p); });
+    }
+  });
+  // condition-new-monthly にカンマ入力
+  const condMonthlyEl=document.getElementById('condition-new-monthly');
+  if(condMonthlyEl) initCI(condMonthlyEl);
+  document.getElementById('btn-apply-condition').addEventListener('click',applyConditionChange);
 
   document.getElementById('btn-add-repayment').addEventListener('click',()=>{
     const p=projects.find(x=>x.id===detailProjectId); if(!p) return;
