@@ -349,9 +349,14 @@ function applyShortage(){
   } else if(action==='monthly'){
     const mf=pn(document.getElementById('shortage-new-monthly').value?.replace(/,/g,''));
     if(!mf||mf<=0){toast('月回収額を入力してください','err');return;}
-    const mpp=mf-p.fee;
+    const mpp=mf-p.fee; // 月元本回収部分 = 月回収額 - 手数料
     if(mpp<=0){toast('月回収額が手数料より少ないです','err');return;}
-    p.months=Math.ceil(p.principal/mpp);
+    // 残り元金 = 全元金 - (月元本 × 回収済み回数)
+    const origMonthlyPrincipal=p.principal/p.months; // 変更前の月元本
+    const remP=Math.max(0,p.principal-origMonthlyPrincipal*p.elapsed);
+    // 残り月数 = ceil(残り元金 ÷ 新しい月元本部分)
+    const remMonths=Math.max(1,Math.ceil(remP/mpp));
+    p.months=p.elapsed+remMonths;
   }
 
   if(detailId===ctx.id){renderDetailSummary(p);renderRepaymentTable(p);updateRecordHint(p);}
