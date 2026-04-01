@@ -341,22 +341,49 @@ function applyShortage(){
     // feeは変えない
   }
 
-  // 月数・月額の調整
+  // ── 返済条件の再計算 ──
+  // fee       = 変更後元金 × 利率%（不足・超過で既に更新済み）
+  // 月回収額  = 元金/月数 + fee（月数を変えると自動で変わる）
+  // 残り元金  = 元金 - (元金/月数) × elapsed
+  // 月元本部分 = 月回収額(or指定額) - fee
+  // 残り月数  = ceil(残り元金 ÷ 月元本部分)
+  // 総月数    = elapsed + 残り月数
+
+  const curFinal     = mrFinal(p);                                   // 現在の月回収額
+  const origMonthlyP = p.principal / p.months;                       // 現在の月元本
+  const remPrincipal = Math.max(0, p.principal - origMonthlyP * p.elapsed); // 残り元金
+
   if(action==='months'){
     const nm=pn(document.getElementById('shortage-new-months').value);
     if(!nm||nm<1){toast('残り月数を入力してください','err');return;}
-    p.months=p.elapsed+nm;
+    // 月額一定: 月元本部分 = curFinal - fee
+    // 残り月数 = ceil(残り元金 ÷ 月元本部分) → 指定nmと一致確認不要、そのまま使う
+    // → 総月数 = elapsed + nm（月回収額は p.months変化で自動計算）
+    // p.months を調整して mrFinal が curFinal に近づくよう設定
+    const mpp = curFinal - p.fee;
+    if(mpp > 0){
+      // p.principal/p.months = mpp となる p.months を逆算
+      // → p.months = p.principal/mpp
+      // ただし elapsed+nm に合わせる
+      p.months = p.elapsed + nm;
+      // ※ mrFinal は p.principal/(elapsed+nm) + fee となるが
+      //   残り元金/nm + fee = curFinal になる（定義上）
+    } else {
+      p.months = p.elapsed + nm;
+    }
+
   } else if(action==='monthly'){
     const mf=pn(document.getElementById('shortage-new-monthly').value?.replace(/,/g,''));
     if(!mf||mf<=0){toast('月回収額を入力してください','err');return;}
-    const mpp=mf-p.fee; // 月元本回収部分 = 月回収額 - 手数料
+    // 月元本部分 = 指定月回収額 - fee
+    const mpp = mf - p.fee;
     if(mpp<=0){toast('月回収額が手数料より少ないです','err');return;}
-    // 残り元金 = 全元金 - (月元本 × 回収済み回数)
-    const origMonthlyPrincipal=p.principal/p.months; // 変更前の月元本
-    const remP=Math.max(0,p.principal-origMonthlyPrincipal*p.elapsed);
-    // 残り月数 = ceil(残り元金 ÷ 新しい月元本部分)
-    const remMonths=Math.max(1,Math.ceil(remP/mpp));
-    p.months=p.elapsed+remMonths;
+    // 残り月数 = ceil(残り元金 ÷ 月元本部分)
+    const remMonths = Math.max(1, Math.ceil(remPrincipal / mpp));
+    // 総月数を p.months に設定
+    // p.principal/p.months + fee ≒ mf にするため p.months = p.principal/mpp
+    const idealMonths = Math.ceil(p.principal / mpp);
+    p.months = Math.max(p.elapsed + remMonths, idealMonths);
   }
 
   if(detailId===ctx.id){renderDetailSummary(p);renderRepaymentTable(p);updateRecordHint(p);}
