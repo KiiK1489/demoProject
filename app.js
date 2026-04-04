@@ -356,12 +356,20 @@ function openAdjust(p){
 
   const newP   = isSh ? p.principal+ctx.shortage : Math.max(0,p.principal-ctx.surplus);
   const newFee = isSh ? newP*(p.rate/100) : p.fee;
-  // 詳細と同じ計算: 新元金 - 新月元本×(elapsed+1)
-  // ※ポップアップ表示時はまだelapsed++前なのでelapsed+1が回収後と同じ
-  const newMp  = newP / p.months;
-  const remP   = Math.max(0, newP - newMp*(p.elapsed+1));
+
+  // 残り元金の計算（切り上げ前の月元本を使う）
+  // 切り上げ前月元本 = 元金 ÷ 総月数
+  const origMonthlyP = p.principal / p.months; // 切り上げ前の月元本
+  // 確定済みelapsed回分は切り上げ前月元本で引く
+  // 今回払った分の元金部分 = 今回払った額 - 手数料（切り上げ前）
+  const paidPrincipalNow = Math.max(0, ctx.amount - origMonthlyP - newFee + origMonthlyP);
+  // シンプルに: 今回払った元金部分 = 払った額 - 手数料
+  const thisPaidPrincipal = Math.max(0, ctx.amount - p.fee);
+  // 残り元金 = 新元金 - 切上前月元本×elapsed回 - 今回の元金部分
+  const remP   = Math.max(0, newP - origMonthlyP*p.elapsed - thisPaidPrincipal);
   const rem    = Math.max(1, p.months-p.elapsed-1);
   const remFee = newFee * rem;
+  // 残債は切り上げ後
   const remMrFinal = rem>0 ? ceil(remP/rem + newFee, p.roundUnit||10000) : 0;
   const remDebt    = remMrFinal * rem;
   document.getElementById('shortage-remain-info').innerHTML=
