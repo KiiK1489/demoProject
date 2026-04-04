@@ -279,11 +279,12 @@ function addFunds(){
     // 月額維持・回数を増やす
     const newMPP=fixedFinal-p.fee;
     if(newMPP>0)p.months=p.elapsed+Math.max(1,Math.ceil(remPAfterFunds/newMPP));
-    // remPrincipal/remMonthsはリセット（通常計算に戻す）
-    p.remPrincipal=null; p.remMonths=null; p.paidBeforeReset=0;
+    // 残り分をremPrincipal/remMonthsにセット（通常計算ではなく残り分で計算）
+    p.remPrincipal=remPAfterFunds;
+    p.remMonths=p.months-p.elapsed;
+    p.paidBeforeReset=recovered(p);
   } else {
     // 回数維持・月額を増やす
-    // remPrincipalとremMonthsを残り分にセット
     p.remPrincipal=remPAfterFunds;
     p.remMonths=p.months-p.elapsed;
     p.paidBeforeReset=recovered(p);
