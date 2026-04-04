@@ -417,9 +417,18 @@ function applyShortage(){
   // 残り月数  = ceil(残り元金 ÷ 月元本部分)
   // 総月数    = elapsed + 残り月数
 
-  // 残り元金（計算用のみ・p.principalは変えない）
-  const origMonthlyP = p.principal / p.months;
-  const remPrincipal = Math.max(0, p.principal - origMonthlyP * p.elapsed);
+  // 残り元金（ポップアップと同じ計算）
+  // elapsed はすでに++されているので、今回払った分の元金部分も引く
+  const newMp2 = p.principal / p.months;
+  const paidPrincipalPart2 = Math.max(0, ctx.amount - (isSh ? p.principal*(p.rate/100)/1 : p.fee));
+  // 不足時: 今回払った元金部分 = 今回払った額 - 元の手数料（不足前のfee）
+  // 元のfeeはp.fee（不足後に再計算される前）→ shortageCtxに保存されているexpectedから引く
+  const origFee2 = ctx.expected - (ctx.expected - p.fee > 0 ? p.principal/p.months : 0);
+  const paidPP = Math.max(0, ctx.amount - (p.principal/(p.months))*(p.months/p.months));
+  // シンプルに: 今回払った額のうち元金部分 = 払った額 - 不足前fee
+  const prevFee = isSh ? (p.principal - ctx.shortage)*(p.rate/100) : p.fee;
+  const paidPrincipalNow = Math.max(0, ctx.amount - prevFee);
+  const remPrincipal = Math.max(0, p.principal - newMp2*(p.elapsed-1) - paidPrincipalNow);
 
   if(action==='months'){
     const nm=pn(document.getElementById('shortage-new-months').value);
