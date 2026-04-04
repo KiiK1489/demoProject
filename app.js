@@ -357,13 +357,15 @@ function openAdjust(p){
   const newP   = isSh ? p.principal+ctx.shortage : Math.max(0,p.principal-ctx.surplus);
   const newFee = isSh ? newP*(p.rate/100) : p.fee;
   const origMp = p.principal/p.months;
-  // 残り元金 = 新元金 - 確定済み月元本 × 回収済み回数
+  // 残り元金 = 新元金 - 月元本 × 回収済み回数（参考表示用・切り上げ前）
   const remP   = Math.max(0, newP - origMp*p.elapsed);
-  // 残り手数料 = 新fee × 残り回数
   const rem    = Math.max(1, p.months-p.elapsed);
   const remFee = newFee * rem;
+  // 残債合計 = mrFinal（切り上げ後）× 残り月数（詳細画面と同じ計算）
+  const remMrFinal = ceil(remP/rem + newFee, p.roundUnit||10000);
+  const remDebt    = remMrFinal * rem;
   document.getElementById('shortage-remain-info').innerHTML=
-    `残り元金: <strong>${fmt(remP)}</strong>　残り手数料: <strong>${fmt(remFee)}</strong>　残債合計: <strong>${fmt(remP+remFee)}</strong>`;
+    `残り元金: <strong>${fmt(remP)}</strong>　残り手数料: <strong>${fmt(remFee)}</strong>　残債合計: <strong>${fmt(remDebt)}</strong>`;
   document.getElementById('shortage-new-months').value=rem;
   document.getElementById('shortage-new-monthly').value='';
   const r=document.querySelector('input[name="shortage-action"][value="months"]');
