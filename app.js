@@ -422,9 +422,15 @@ function applyShortage(){
   // 残り月数  = ceil(残り元金 ÷ 月元本部分)
   // 総月数    = elapsed + 残り月数
 
-  // 残り元金（elapsed++後の新元金ベースで計算）
-  const origMonthlyP = p.principal / p.months;
-  const remPrincipal = Math.max(0, p.principal - origMonthlyP * p.elapsed);
+  // 残り元金（ポップアップと同じ計算）
+  // 切り上げ前月元本（不足前の元金÷月数）× elapsed前の回数 + 今回の元金部分
+  const origMonthlyP = (p.principal - (isSh ? ctx.shortage : -ctx.surplus)) / p.months;
+  const thisPaidPrincipal2 = Math.max(0, ctx.amount - origMonthlyP*(p.months/p.months));
+  // 今回払った元金部分 = 払った額 - 不足前の手数料
+  const prevFee2 = isSh ? (p.principal - ctx.shortage)*(p.rate/100) : p.fee;
+  const thisPaid2 = Math.max(0, ctx.amount - prevFee2);
+  // 残り元金 = 新元金 - 切上前月元本×(elapsed-1)回 - 今回の元金部分
+  const remPrincipal = Math.max(0, p.principal - origMonthlyP*(p.elapsed-1) - thisPaid2);
 
   if(action==='months'){
     const nm=pn(document.getElementById('shortage-new-months').value);
