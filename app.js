@@ -269,10 +269,24 @@ function addFunds(){
   if(!p.deposits)p.deposits=[];
   p.deposits.push({date,amount,virtualAmount:virt,actualAmount:amount,note:'追加投資'});
   recalcDeposits(p);
+
+  // 追加投資後は残り分で再計算
+  // 残り元金 = 新元金 - 切り上げ前月元本×elapsed
+  const origMonthlyPre = (p.principal-(amount+virt)) / p.months; // 追加前の月元本
+  const remPAfterFunds = Math.max(0, p.principal - origMonthlyPre*p.elapsed);
+
   if(mode==='extend'){
+    // 月額維持・回数を増やす
     const newMPP=fixedFinal-p.fee;
-    const remP=Math.max(0,p.principal-(p.principal/p.months)*p.elapsed);
-    if(newMPP>0)p.months=p.elapsed+Math.max(1,Math.ceil(remP/newMPP));
+    if(newMPP>0)p.months=p.elapsed+Math.max(1,Math.ceil(remPAfterFunds/newMPP));
+    // remPrincipal/remMonthsはリセット（通常計算に戻す）
+    p.remPrincipal=null; p.remMonths=null; p.paidBeforeReset=0;
+  } else {
+    // 回数維持・月額を増やす
+    // remPrincipalとremMonthsを残り分にセット
+    p.remPrincipal=remPAfterFunds;
+    p.remMonths=p.months-p.elapsed;
+    p.paidBeforeReset=recovered(p);
   }
   save();renderAll();
   if(detailId===id)renderDetailSummary(p);
