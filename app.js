@@ -356,16 +356,13 @@ function openAdjust(p){
 
   const newP   = isSh ? p.principal+ctx.shortage : Math.max(0,p.principal-ctx.surplus);
   const newFee = isSh ? newP*(p.rate/100) : p.fee;
-  // 新元金ベースの月元本で確定済み4回分を引く
+  // 詳細と同じ計算: 新元金 - 新月元本×(elapsed+1)
+  // ※ポップアップ表示時はまだelapsed++前なのでelapsed+1が回収後と同じ
   const newMp  = newP / p.months;
-  // さらに今回払った額のうち元金部分（fee分を除いた元本回収分）を引く
-  const paidPrincipalPart = Math.max(0, ctx.amount - p.fee);
-  // 残り元金 = 新元金 - 新月元本×elapsed - 今回の元金部分
-  const remP   = Math.max(0, newP - newMp*p.elapsed - paidPrincipalPart);
-  const rem    = Math.max(1, p.months-p.elapsed);
+  const remP   = Math.max(0, newP - newMp*(p.elapsed+1));
+  const rem    = Math.max(1, p.months-p.elapsed-1);
   const remFee = newFee * rem;
-  // 残債合計 = mrFinal（切り上げ後）× 残り月数
-  const remMrFinal = ceil(remP/rem + newFee, p.roundUnit||10000);
+  const remMrFinal = rem>0 ? ceil(remP/rem + newFee, p.roundUnit||10000) : 0;
   const remDebt    = remMrFinal * rem;
   document.getElementById('shortage-remain-info').innerHTML=
     `残り元金: <strong>${fmt(remP)}</strong>　残り手数料: <strong>${fmt(remFee)}</strong>　残債合計: <strong>${fmt(remDebt)}</strong>`;
@@ -417,18 +414,9 @@ function applyShortage(){
   // 残り月数  = ceil(残り元金 ÷ 月元本部分)
   // 総月数    = elapsed + 残り月数
 
-  // 残り元金（ポップアップと同じ計算）
-  // elapsed はすでに++されているので、今回払った分の元金部分も引く
-  const newMp2 = p.principal / p.months;
-  const paidPrincipalPart2 = Math.max(0, ctx.amount - (isSh ? p.principal*(p.rate/100)/1 : p.fee));
-  // 不足時: 今回払った元金部分 = 今回払った額 - 元の手数料（不足前のfee）
-  // 元のfeeはp.fee（不足後に再計算される前）→ shortageCtxに保存されているexpectedから引く
-  const origFee2 = ctx.expected - (ctx.expected - p.fee > 0 ? p.principal/p.months : 0);
-  const paidPP = Math.max(0, ctx.amount - (p.principal/(p.months))*(p.months/p.months));
-  // シンプルに: 今回払った額のうち元金部分 = 払った額 - 不足前fee
-  const prevFee = isSh ? (p.principal - ctx.shortage)*(p.rate/100) : p.fee;
-  const paidPrincipalNow = Math.max(0, ctx.amount - prevFee);
-  const remPrincipal = Math.max(0, p.principal - newMp2*(p.elapsed-1) - paidPrincipalNow);
+  // 残り元金（elapsed++後の新元金ベースで計算）
+  const origMonthlyP = p.principal / p.months;
+  const remPrincipal = Math.max(0, p.principal - origMonthlyP * p.elapsed);
 
   if(action==='months'){
     const nm=pn(document.getElementById('shortage-new-months').value);
