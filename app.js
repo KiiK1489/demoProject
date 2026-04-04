@@ -356,12 +356,15 @@ function openAdjust(p){
 
   const newP   = isSh ? p.principal+ctx.shortage : Math.max(0,p.principal-ctx.surplus);
   const newFee = isSh ? newP*(p.rate/100) : p.fee;
-  const origMp = p.principal/p.months;
-  // 残り元金 = 新元金 - 月元本 × 回収済み回数（参考表示用・切り上げ前）
-  const remP   = Math.max(0, newP - origMp*p.elapsed);
+  // 新元金ベースの月元本で確定済み4回分を引く
+  const newMp  = newP / p.months;
+  // さらに今回払った額のうち元金部分（fee分を除いた元本回収分）を引く
+  const paidPrincipalPart = Math.max(0, ctx.amount - p.fee);
+  // 残り元金 = 新元金 - 新月元本×elapsed - 今回の元金部分
+  const remP   = Math.max(0, newP - newMp*p.elapsed - paidPrincipalPart);
   const rem    = Math.max(1, p.months-p.elapsed);
   const remFee = newFee * rem;
-  // 残債合計 = mrFinal（切り上げ後）× 残り月数（詳細画面と同じ計算）
+  // 残債合計 = mrFinal（切り上げ後）× 残り月数
   const remMrFinal = ceil(remP/rem + newFee, p.roundUnit||10000);
   const remDebt    = remMrFinal * rem;
   document.getElementById('shortage-remain-info').innerHTML=
