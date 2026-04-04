@@ -75,19 +75,24 @@ function mrFinal(p){return ceil(mrRaw(p),p.roundUnit||10000)}
 function totalPay(p){return mrFinal(p)*p.months}
 function recovered(p){return p.repayments&&p.repayments.length?p.repayments.reduce((s,r)=>s+(r.amount||0),0):p.recovered||0}
 function debt(p){return Math.max(0,totalPay(p)-recovered(p))}
+// 現時点での完済額 = 残り元金 + fee1回分
+function fullSettlement(p){
+  const mp=p.months?p.principal/p.months:0;
+  const remP=Math.max(0,p.principal-mp*p.elapsed);
+  return remP+getFee(p);
+}
 function capProfit(p){return Math.max(0,p.principal-(p.actualCost||p.principal))}
 
 function profit(p){
   if(!p.elapsed)return p.extraProfit||0;
-  const mp=p.months?p.principal/p.months:0;
+  // 累計手数料利益 = fee × 回収済み回数（セグメントで利率変更に対応）
   let t=0;
   for(let i=0;i<p.segments.length;i++){
     const seg=p.segments[i];
     const nxt=i+1<p.segments.length?p.segments[i+1].startElapsed:p.elapsed;
     const sm=Math.max(0,nxt-seg.startElapsed);if(!sm)continue;
-    const sf=p.principal*(seg.rate/100);
-    const sr=ceil(mp+sf,p.roundUnit||10000);
-    t+=(sr-mp)*sm;
+    const segFee=p.principal*(seg.rate/100);
+    t+=segFee*sm;
   }
   return t+(p.extraProfit||0);
 }
@@ -259,11 +264,18 @@ function recordPayment(){
   const amount=pn(document.getElementById('record-amount').value?.replace(/,/g,''));
   if(!amount||amount<=0){toast('回収金額を入力してください','err');return;}
   const expected=mrFinal(p);
+  const settle=fullSettlement(p);
   const diff=amount-expected;
-  if(diff<-1&&debt(p)>0){
+
+  if(amount>=settle){
+    // 完済額以上 → 即完済（超過分はcommitRecord内でextraProfitへ）
+    commitRecord(p,date,amount);
+  } else if(diff<-1&&debt(p)>0){
+    // 月回収額より不足 → 調整モーダル
     shortageCtx={id:detailId,date,amount,expected,shortage:expected-amount,type:'shortage'};
     openAdjust(p);
   } else if(diff>1){
+    // 月回収額より超過だが完済額未満 → 調整モーダル
     shortageCtx={id:detailId,date,amount,expected,surplus:amount-expected,type:'surplus'};
     openAdjust(p);
   } else {
@@ -273,10 +285,10 @@ function recordPayment(){
 }
 
 function commitRecord(p,date,amount){
-  const d=debt(p);
-  // 残債超過分はextraProfitへ
-  if(amount>d&&d>=0){
-    p.extraProfit=(p.extraProfit||0)+(amount-d);
+  // 完済額を超えた分はextraProfitへ（利益）
+  const settle=fullSettlement(p);
+  if(amount>settle){
+    p.extraProfit=(p.extraProfit||0)+(amount-settle);
   }
   if(!p.repayments)p.repayments=[];
   p.repayments.push({date,amount});
@@ -338,7 +350,10 @@ function applyShortage(){
     p.shortageAccum=(p.shortageAccum||0)+ctx.shortage;
     p.fee=p.principal*(p.rate/100);
   } else {
-    p.principal=Math.max(0,p.principal-ctx.surplus);
+    // 超過: 元金を超えないよう差し引く。超えた分はextraProfitへ
+    const deduct=Math.min(ctx.surplus,p.principal);
+    p.extraProfit=(p.extraProfit||0)+(ctx.surplus-deduct);
+    p.principal=Math.max(0,p.principal-deduct);
     // feeは変えない
   }
 
@@ -449,7 +464,12 @@ function switchTab(name){
 function updateRecordHint(p){
   const el=document.getElementById('record-hint');if(!el)return;
   const mf=mrFinal(p);const d=debt(p);
-  el.textContent=`想定: ${fmt(mf)}　残債: ${fmt(d)}`;
+  if(d<=0){
+    el.textContent='完済済み';
+    return;
+  }
+  const s=fullSettlement(p);
+  el.innerHTML=`月回収額: <strong>${fmt(mf)}</strong>　現時点での完済額: <strong>${fmt(s)}</strong>`;
 }
 
 function renderDetailSummary(p){
