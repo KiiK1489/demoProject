@@ -43,6 +43,7 @@ function mg(p){
   if(p.virtualCost==null)    p.virtualCost  =0;
   if(p.fee==null)            p.fee          =p.principal*(p.rate||0)/100;
   if(p.extraProfit==null)    p.extraProfit  =0;
+  if(p.settled==null)        p.settled      =false;
   return p;
 }
 
@@ -74,7 +75,7 @@ function mrRaw(p){return p.months?p.principal/p.months+getFee(p):0}
 function mrFinal(p){return ceil(mrRaw(p),p.roundUnit||10000)}
 function totalPay(p){return mrFinal(p)*p.months}
 function recovered(p){return p.repayments&&p.repayments.length?p.repayments.reduce((s,r)=>s+(r.amount||0),0):p.recovered||0}
-function debt(p){return Math.max(0,totalPay(p)-recovered(p))}
+function debt(p){if(p.settled)return 0;return Math.max(0,totalPay(p)-recovered(p))}
 // 現時点での完済額 = 残り元金 + fee1回分
 function fullSettlement(p){
   const mp=p.months?p.principal/p.months:0;
@@ -285,14 +286,17 @@ function recordPayment(){
 }
 
 function commitRecord(p,date,amount){
-  // 完済額を超えた分はextraProfitへ（利益）
   const settle=fullSettlement(p);
-  if(amount>settle){
-    p.extraProfit=(p.extraProfit||0)+(amount-settle);
-  }
   if(!p.repayments)p.repayments=[];
   p.repayments.push({date,amount});
   p.elapsed++;p.recovered=recovered(p);
+
+  if(amount>=settle){
+    // 完済額以上 → 完済フラグをセット・超過分はextraProfitへ
+    p.settled=true;
+    p.extraProfit=(p.extraProfit||0)+Math.max(0,amount-settle);
+  }
+
   save();renderAll();
   if(detailId===p.id){renderDetailSummary(p);renderRepaymentTable(p);}
   updateRecordHint(p);
@@ -338,11 +342,14 @@ function applyShortage(){
   const isSh=ctx.type==='shortage';
 
   // 回収記録
-  const d=debt(p);
-  if(ctx.amount>d&&d>=0) p.extraProfit=(p.extraProfit||0)+(ctx.amount-d);
+  const settle=fullSettlement(p);
   if(!p.repayments)p.repayments=[];
   p.repayments.push({date:ctx.date,amount:ctx.amount});
   p.elapsed++;p.recovered=recovered(p);
+  if(ctx.amount>=settle){
+    p.settled=true;
+    p.extraProfit=(p.extraProfit||0)+Math.max(0,ctx.amount-settle);
+  }
 
   // 元金・fee調整
   if(isSh){
