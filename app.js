@@ -75,7 +75,7 @@ function mrFinal(p){return ceil(mrRaw(p),p.roundUnit||10000)}
 function totalPay(p){return mrFinal(p)*p.months}
 function recovered(p){return p.repayments&&p.repayments.length?p.repayments.reduce((s,r)=>s+(r.amount||0),0):p.recovered||0}
 function debt(p){return Math.max(0,totalPay(p)-recovered(p))}
-function capProfit(p){return p.principal-(p.actualCost||p.principal)}
+function capProfit(p){return Math.max(0,p.principal-(p.actualCost||p.principal))}
 
 function profit(p){
   if(!p.elapsed)return p.extraProfit||0;
@@ -298,15 +298,16 @@ function openAdjust(p){
   infoEl.innerHTML=`<span style="color:${diffColor}">${isSh?'不足':'超過'}: <strong>${fmt(diff)}</strong></span>　想定: <strong>${fmt(ctx.expected)}</strong> → 実際: <strong>${fmt(ctx.amount)}</strong>`;
   infoEl.style.cssText=`background:${isSh?'var(--rb)':'var(--gb)'};border:1px solid ${diffColor};border-radius:6px;padding:10px 12px;font-size:.82rem;line-height:1.6;margin-bottom:8px`;
 
-  const newP=isSh?p.principal+ctx.shortage:Math.max(0,p.principal-ctx.surplus);
-  const newFee=isSh?newP*(p.rate/100):p.fee;
-  const origMp=p.principal/p.months;
-  const remP=Math.max(0,newP-origMp*p.elapsed);
-  const remFee=remP*(p.rate/100);
+  const newP   = isSh ? p.principal+ctx.shortage : Math.max(0,p.principal-ctx.surplus);
+  const newFee = isSh ? newP*(p.rate/100) : p.fee;
+  const origMp = p.principal/p.months;
+  // 残り元金 = 新元金 - 確定済み月元本 × 回収済み回数
+  const remP   = Math.max(0, newP - origMp*p.elapsed);
+  // 残り手数料 = 新fee × 残り回数
+  const rem    = Math.max(1, p.months-p.elapsed);
+  const remFee = newFee * rem;
   document.getElementById('shortage-remain-info').innerHTML=
     `残り元金: <strong>${fmt(remP)}</strong>　残り手数料: <strong>${fmt(remFee)}</strong>　残債合計: <strong>${fmt(remP+remFee)}</strong>`;
-
-  const rem=Math.max(1,p.months-p.elapsed);
   document.getElementById('shortage-new-months').value=rem;
   document.getElementById('shortage-new-monthly').value='';
   const r=document.querySelector('input[name="shortage-action"][value="months"]');
@@ -382,23 +383,28 @@ function updateShortagePreview(){
   const p=projects.find(x=>x.id===shortageCtx.id);if(!p)return;
   const action=document.querySelector('input[name="shortage-action"]:checked')?.value;
   const isSh=shortageCtx.type==='shortage';
-  const newP=isSh?p.principal+shortageCtx.shortage:Math.max(0,p.principal-shortageCtx.surplus);
-  const newFee=isSh?newP*(p.rate/100):p.fee;
+  const newP   =isSh?p.principal+shortageCtx.shortage:Math.max(0,p.principal-shortageCtx.surplus);
+  const newFee =isSh?newP*(p.rate/100):p.fee;
+  // 残り元金（計算用）= 新元金 - 月元本 × 回収済み回数
+  const origMP = p.principal/p.months;
+  const remP   = Math.max(0, newP - origMP*p.elapsed);
   const pv=document.getElementById('shortage-preview');
   const pt=document.getElementById('shortage-preview-text');
   if(action==='months'){
     const nm=pn(document.getElementById('shortage-new-months').value);
     if(!nm||nm<1){pv.classList.add('hidden');return;}
-    const newTotal=p.elapsed+nm;
-    const rawM=newP/newTotal+newFee;
+    // 月回収額 = 残り元金/残り月数 + fee
+    const rawM=remP/nm+newFee;
     const finalM=ceil(rawM,p.roundUnit||10000);
+    const newTotal=p.elapsed+nm;
     pt.textContent=`月回収額: ${fmt(finalM)}　×　${nm}回　総支払: ${fmt(finalM*newTotal)}`;
     pv.classList.remove('hidden');
   } else if(action==='monthly'){
     const mf=pn(document.getElementById('shortage-new-monthly').value?.replace(/,/g,''));
     if(!mf||mf<=0){pv.classList.add('hidden');return;}
     const mpp=mf-newFee;if(mpp<=0){pv.classList.add('hidden');return;}
-    const nm=Math.max(1,Math.ceil(newP/mpp));
+    // 残り月数 = ceil(残り元金 ÷ 月元本部分)
+    const nm=Math.max(1,Math.ceil(remP/mpp));
     const newTotal=p.elapsed+nm;
     pt.textContent=`月回収額: ${fmt(mf)}　×　${nm}回　総支払: ${fmt(mf*newTotal)}`;
     pv.classList.remove('hidden');
