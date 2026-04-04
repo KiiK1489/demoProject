@@ -356,19 +356,13 @@ function applyShortage(){
   if(action==='months'){
     const nm=pn(document.getElementById('shortage-new-months').value);
     if(!nm||nm<1){toast('残り月数を入力してください','err');return;}
-    // 月元本（新） = 残り元金 ÷ 残り月数
-    // mrRaw = p.principal/p.months + fee なので
-    // p.principal/p.months = remPrincipal/nm
-    // → p.months = p.principal * nm / remPrincipal
-    p.months = p.elapsed + Math.round(p.principal * nm / remPrincipal);
+    p.months = p.elapsed + nm;
 
   } else if(action==='monthly'){
     const mf=pn(document.getElementById('shortage-new-monthly').value?.replace(/,/g,''));
     if(!mf||mf<=0){toast('月回収額を入力してください','err');return;}
-    // 月元本部分 = 指定月回収額 - fee
     const mpp = mf - p.fee;
     if(mpp<=0){toast('月回収額が手数料より少ないです','err');return;}
-    // 残り月数 = ceil(残り元金 ÷ 月元本部分)
     const remMonths = Math.max(1, Math.ceil(remPrincipal / mpp));
     p.months = p.elapsed + remMonths;
   }
