@@ -349,38 +349,28 @@ function applyShortage(){
   // 残り月数  = ceil(残り元金 ÷ 月元本部分)
   // 総月数    = elapsed + 残り月数
 
-  // 残り元金 = 新元金 - 回収済み月元本 × 回収回数
+  // 残り元金（計算用のみ・p.principalは変えない）
   const origMonthlyP = p.principal / p.months;
   const remPrincipal = Math.max(0, p.principal - origMonthlyP * p.elapsed);
-
-  // mrRaw = p.principal/p.months + fee という式を維持しつつ
-  // 月回収額 = 残り元金/残り月数 + fee にするには
-  // p.principal を残り元金に、p.months を残り月数に置き換えて
-  // elapsed を 0 にリセットするのが最もシンプルで正確
-  // (回収履歴は repayments に残るので整合性は保たれる)
 
   if(action==='months'){
     const nm=pn(document.getElementById('shortage-new-months').value);
     if(!nm||nm<1){toast('残り月数を入力してください','err');return;}
-    // 残り元金・残り月数・残りfeeで再設定
-    p.principal = remPrincipal;
-    p.fee       = remPrincipal * (p.rate/100);
-    p.months    = nm;
-    p.elapsed   = 0; // 残り分だけのカウントにリセット
+    // 月元本（新） = 残り元金 ÷ 残り月数
+    // mrRaw = p.principal/p.months + fee なので
+    // p.principal/p.months = remPrincipal/nm
+    // → p.months = p.principal * nm / remPrincipal
+    p.months = p.elapsed + Math.round(p.principal * nm / remPrincipal);
 
   } else if(action==='monthly'){
     const mf=pn(document.getElementById('shortage-new-monthly').value?.replace(/,/g,''));
     if(!mf||mf<=0){toast('月回収額を入力してください','err');return;}
-    // 残り元金に対するfeeと月元本部分
-    const remFee = remPrincipal * (p.rate/100);
-    const mpp    = mf - remFee;
+    // 月元本部分 = 指定月回収額 - fee
+    const mpp = mf - p.fee;
     if(mpp<=0){toast('月回収額が手数料より少ないです','err');return;}
     // 残り月数 = ceil(残り元金 ÷ 月元本部分)
     const remMonths = Math.max(1, Math.ceil(remPrincipal / mpp));
-    p.principal = remPrincipal;
-    p.fee       = remFee;
-    p.months    = remMonths;
-    p.elapsed   = 0;
+    p.months = p.elapsed + remMonths;
   }
 
   if(detailId===ctx.id){renderDetailSummary(p);renderRepaymentTable(p);updateRecordHint(p);}
