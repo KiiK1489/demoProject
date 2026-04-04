@@ -88,10 +88,14 @@ function getRemMonths(p){
 function mrRaw(p){const rm=getRemMonths(p);return rm?getRemPrincipal(p)/rm+getFee(p):0}
 function mrFinal(p){return ceil(mrRaw(p),p.roundUnit||10000)}
 function totalPay(p){
-  // remMonthsが設定されている（返済条件変更後）: 残り分だけの総支払
+  // remMonthsが設定されている（返済条件変更後）: 残り分だけの総支払（残債計算用）
   if(p.remMonths!=null) return mrFinal(p)*p.remMonths;
-  // 通常時: 全体の総支払
   return mrFinal(p)*p.months;
+}
+// 表示用の総支払見込み（全体: 既回収 + 残り分）
+function totalPayDisplay(p){
+  const paidBefore = p.paidBeforeReset||0;
+  return paidBefore + totalPay(p);
 }
 function recovered(p){return p.repayments&&p.repayments.length?p.repayments.reduce((s,r)=>s+(r.amount||0),0):p.recovered||0}
 function debt(p){
@@ -523,16 +527,17 @@ function updateRecordHint(p){
 }
 
 function renderDetailSummary(p){
-  const rec=recovered(p),d=debt(p),tp=totalPay(p);
-  const recRate=tp>0?Math.min((rec/tp)*100,100):0;
+  const rec=recovered(p),d=debt(p);
+  const tpDisp=totalPayDisplay(p); // 表示用（全体）
+  const recRate=tpDisp>0?Math.min((rec/tpDisp)*100,100):0;
   const pr=profit(p),fee=getFee(p),cap=capProfit(p);
   const remainM=Math.max(0,p.months-p.elapsed);
-  const feeTotal=Math.max(0,tp-p.principal);
-  const feeProfit=Math.max(0,tp-p.principal);
-  const profitRatePct=tp>0?(feeProfit/tp)*100:0;
+  const feeTotal=Math.max(0,tpDisp-p.principal);   // 手数料合計（全体ベース）
+  const feeProfit=Math.max(0,tpDisp-p.principal);  // 利益見込み（全体ベース）
+  const profitRatePct=tpDisp>0?(feeProfit/tpDisp)*100:0;
   const profitExpected=feeProfit+Math.max(0,cap);
   const actualCostV=p.actualCost||p.principal;
-  const actualRecRate=actualCostV>0?Math.min((rec/actualCostV)*100,999):0;
+  const actualRecRate=actualCostV>0?Math.min((rec/actualCostV)*100,100):0; // 100%上限
 
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   set('ds-remaining',   fmt(d));
@@ -550,8 +555,8 @@ function renderDetailSummary(p){
   set('ds-profit',      fmt(pr));
   set('ds-profit-rate', profitRatePct.toFixed(1)+'%');
   set('ds-actual-recovery-rate',actualRecRate.toFixed(1)+'%');
-  set('ds-rate',        d<=0?'100.0%':(rec/tp*100).toFixed(1)+'%');
-  set('ds-total-pay',   fmt(tp));
+  set('ds-rate',        d<=0?'100.0%':(rec/tpDisp*100).toFixed(1)+'%');
+  set('ds-total-pay',   fmt(tpDisp));
 
   const bar=document.getElementById('ds-rate-bar');
   if(bar){const pct=Math.min(recRate,100);bar.style.width=pct.toFixed(1)+'%';bar.className='bar-f'+(pct>=70?'':pct>=30?' mid':' low');}
