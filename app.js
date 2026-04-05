@@ -109,6 +109,8 @@ function totalPay(p){
 }
 // 表示用の総支払見込み（全体: 既回収 + 残り分）
 function totalPayDisplay(p){
+  // 完済済みの場合は実際の回収合計を返す
+  if(p.settled) return recovered(p);
   const paidBefore = p.paidBeforeReset||0;
   return paidBefore + totalPay(p);
 }
@@ -588,38 +590,45 @@ function updateRecordHint(p){
 
 function renderDetailSummary(p){
   const rec=recovered(p),d=debt(p);
-  const tpDisp=totalPayDisplay(p); // 表示用（全体）
-  const recRate=tpDisp>0?Math.min((rec/tpDisp)*100,100):0;
+  const tpDisp=totalPayDisplay(p); // 表示用（全体）完済後は実回収合計
   const pr=profit(p),fee=getFee(p),cap=capProfit(p);
   const remainM=Math.max(0,p.months-p.elapsed);
-  const feeTotal=Math.max(0,tpDisp-p.principal);   // 手数料合計（全体ベース）
-  const feeProfit=Math.max(0,tpDisp-p.principal);  // 利益見込み（全体ベース）
+  const feeTotal=Math.max(0,tpDisp-p.principal);
+  const feeProfit=Math.max(0,tpDisp-p.principal);
   const profitRatePct=tpDisp>0?(feeProfit/tpDisp)*100:0;
   const profitExpected=feeProfit+Math.max(0,cap);
   const actualCostV=p.actualCost||p.principal;
-  const actualRecRate=actualCostV>0?Math.min((rec/actualCostV)*100,100):0; // 100%上限
+  const actualRecRate=actualCostV>0?Math.min((rec/actualCostV)*100,100):0;
+  // 完済後は回収率100%・棒グラフも100%
+  const recRate=p.settled?100:tpDisp>0?Math.min((rec/tpDisp)*100,100):0;
 
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   set('ds-remaining',   fmt(d));
-  set('ds-monthly-final',fmt(mrFinal(p)));
+  // 完済後は最後に払った金額を表示
+  const lastPaid=p.repayments&&p.repayments.length?p.repayments[p.repayments.length-1].amount:0;
+  set('ds-monthly-final',fmt(p.settled?lastPaid:mrFinal(p)));
   set('ds-profit-expected',fmt(profitExpected));
   set('ds-principal',   fmt(p.principal));
   set('ds-actual',      fmt(actualCostV));
   set('ds-cap-profit',  fmt(cap));
   set('ds-fee',         fmt(feeTotal));
   set('ds-monthly-fee', fmt(fee));
-  set('ds-monthly',     fmt(mrRaw(p)));
+  set('ds-monthly',     fmt(p.settled?0:mrRaw(p))); // 完済後は0
   set('ds-total-months',`${p.months}回`);
   set('ds-remain-months',`${remainM}回`);
   set('ds-recovered',   fmt(rec));
   set('ds-profit',      fmt(pr));
   set('ds-profit-rate', profitRatePct.toFixed(1)+'%');
   set('ds-actual-recovery-rate',actualRecRate.toFixed(1)+'%');
-  set('ds-rate',        d<=0?'100.0%':(rec/tpDisp*100).toFixed(1)+'%');
+  set('ds-rate',        p.settled?'100.0%':d<=0?'100.0%':(rec/tpDisp*100).toFixed(1)+'%');
   set('ds-total-pay',   fmt(tpDisp));
 
   const bar=document.getElementById('ds-rate-bar');
-  if(bar){const pct=Math.min(recRate,100);bar.style.width=pct.toFixed(1)+'%';bar.className='bar-f'+(pct>=70?'':pct>=30?' mid':' low');}
+  if(bar){
+    const pct=Math.min(recRate,100);
+    bar.style.width=pct.toFixed(1)+'%';
+    bar.className='bar-f'; // 完済後は常に緑
+  }
   const shr=document.getElementById('ds-shortage-row');if(shr)shr.classList.toggle('hidden',!(p.shortageAccum>0));
   const dss=document.getElementById('ds-shortage');if(dss&&p.shortageAccum>0)dss.textContent=fmt(p.shortageAccum);
   updateRecordHint(p);
