@@ -86,7 +86,12 @@ function getRemMonths(p){
   return Math.max(0,p.months-p.elapsed);
 }
 function mrRaw(p){const rm=getRemMonths(p);return rm?getRemPrincipal(p)/rm+getFee(p):0}
-function mrFinal(p){return ceil(mrRaw(p),p.roundUnit||10000)}
+function mrFinal(p){
+  // 残り元金が0の場合は切り上げしない（手数料のみ）
+  const remP=getRemPrincipal(p);
+  if(remP<=0) return mrRaw(p); // 切り上げなし
+  return ceil(mrRaw(p),p.roundUnit||10000);
+}
 function totalPay(p){
   // remMonthsが設定されている（返済条件変更後）: 残り分だけの総支払（残債計算用）
   if(p.remMonths!=null) return mrFinal(p)*p.remMonths;
@@ -317,7 +322,7 @@ function recordPayment(){
   const diff=amount-expected;
 
   if(amount>=settle){
-    // 完済額以上 → 即完済（超過分はcommitRecord内でextraProfitへ）
+    // 完済額以上 → 即完済
     commitRecord(p,date,amount);
   } else if(diff<-1&&debt(p)>0){
     // 月回収額より不足 → 調整モーダル
@@ -379,14 +384,26 @@ function openAdjust(p){
   // 今回払った分の元金部分 = 今回払った額 - 手数料（切り上げ前）
   const paidPrincipalNow = Math.max(0, ctx.amount - origMonthlyP - newFee + origMonthlyP);
   // シンプルに: 今回払った元金部分 = 払った額 - 手数料
-  const thisPaidPrincipal = Math.max(0, ctx.amount - p.fee);
+  // 今回払った元金部分 = 払った額 - 手数料（切り上げ前月元本を上限）
+  const thisPaidPrincipal = Math.min(
+    Math.max(0, ctx.amount - p.fee), // 払った額 - 手数料
+    origMonthlyP // 切り上げ前月元本が上限
+  );
   // 残り元金 = 新元金 - 切上前月元本×elapsed回 - 今回の元金部分
   const remP   = Math.max(0, newP - origMonthlyP*p.elapsed - thisPaidPrincipal);
   const rem    = Math.max(1, p.months-p.elapsed-1);
   const remFee = newFee * rem;
-  // 残債は切り上げ後
-  const remMrFinal = rem>0 ? ceil(remP/rem + newFee, p.roundUnit||10000) : 0;
-  const remDebt    = remMrFinal * rem;
+  // 残債: 残り元金がある場合は切り上げ後、ない場合は手数料のみ（切り上げなし）
+  let remDebt;
+  if(rem<=0){
+    remDebt=0;
+  } else if(remP<=0){
+    // 残り元金なし → 手数料のみ（切り上げしない）
+    remDebt=newFee*rem;
+  } else {
+    const remMrFinal=ceil(remP/rem+newFee,p.roundUnit||10000);
+    remDebt=remMrFinal*rem;
+  }
   document.getElementById('shortage-remain-info').innerHTML=
     `残り元金: <strong>${fmt(remP)}</strong>　残り手数料: <strong>${fmt(remFee)}</strong>　残債合計: <strong>${fmt(remDebt)}</strong>`;
   document.getElementById('shortage-new-months').value=rem;
@@ -443,7 +460,11 @@ function applyShortage(){
   const thisPaidPrincipal2 = Math.max(0, ctx.amount - origMonthlyP*(p.months/p.months));
   // 今回払った元金部分 = 払った額 - 不足前の手数料
   const prevFee2 = isSh ? (p.principal - ctx.shortage)*(p.rate/100) : p.fee;
-  const thisPaid2 = Math.max(0, ctx.amount - prevFee2);
+  // 今回払った元金部分（切り上げ前月元本を上限）
+  const thisPaid2 = Math.min(
+    Math.max(0, ctx.amount - prevFee2),
+    origMonthlyP
+  );
   // 残り元金 = 新元金 - 切上前月元本×(elapsed-1)回 - 今回の元金部分
   const remPrincipal = Math.max(0, p.principal - origMonthlyP*(p.elapsed-1) - thisPaid2);
 
