@@ -46,6 +46,7 @@ function mg(p){
   if(p.settled==null)        p.settled      =false;
   if(p.remPrincipal===undefined) p.remPrincipal=null; // null=自動計算
   if(p.remMonths===undefined)    p.remMonths   =null; // null=自動計算
+  if(p.elapsedAtReset===undefined) p.elapsedAtReset=0;
   if(p.paidBeforeReset===undefined) p.paidBeforeReset=0;
   return p;
 }
@@ -76,13 +77,22 @@ function initCI(){document.querySelectorAll('.ci').forEach(ci);}
 function getFee(p){return p.fee!=null?p.fee:p.principal*(p.rate||0)/100}
 // 残り元金を返す（remPrincipalが設定されていればそれを使う）
 function getRemPrincipal(p){
-  if(p.remPrincipal!=null) return p.remPrincipal;
+  if(p.remPrincipal!=null){
+    // 変更後に払った回数分の月元本を引く
+    const paidAfterCount=p.elapsed-(p.elapsedAtReset||0);
+    const initRemMonths=p.remMonths||1;
+    const monthlyP=p.remPrincipal/initRemMonths;
+    return Math.max(0,p.remPrincipal-monthlyP*paidAfterCount);
+  }
   const mp=p.months?p.principal/p.months:0;
   return Math.max(0,p.principal-mp*p.elapsed);
 }
 // 残り月数を返す（remMonthsが設定されていればそれを使う）
 function getRemMonths(p){
-  if(p.remMonths!=null) return p.remMonths;
+  if(p.remMonths!=null){
+    const paidAfterCount=p.elapsed-(p.elapsedAtReset||0);
+    return Math.max(0,p.remMonths-paidAfterCount);
+  }
   return Math.max(0,p.months-p.elapsed);
 }
 function mrRaw(p){const rm=getRemMonths(p);return rm?getRemPrincipal(p)/rm+getFee(p):0}
@@ -106,9 +116,10 @@ function recovered(p){return p.repayments&&p.repayments.length?p.repayments.redu
 function debt(p){
   if(p.settled)return 0;
   if(p.remMonths!=null){
-    // 返済条件変更後: 残り分の総支払 - 変更後に払った分
+    // 変更後に払った金額
     const paidAfter=recovered(p)-(p.paidBeforeReset||0);
-    return Math.max(0,totalPay(p)-paidAfter);
+    // 初期remMonths×mrFinalが総支払（固定）
+    return Math.max(0,mrFinal(p)*p.remMonths-paidAfter);
   }
   return Math.max(0,totalPay(p)-recovered(p));
 }
@@ -288,11 +299,13 @@ function addFunds(){
     p.remPrincipal=remPAfterFunds;
     p.remMonths=p.months-p.elapsed;
     p.paidBeforeReset=recovered(p);
+    p.elapsedAtReset=p.elapsed;
   } else {
     // 回数維持・月額を増やす
     p.remPrincipal=remPAfterFunds;
     p.remMonths=p.months-p.elapsed;
     p.paidBeforeReset=recovered(p);
+    p.elapsedAtReset=p.elapsed;
   }
   save();renderAll();
   if(detailId===id)renderDetailSummary(p);
@@ -348,14 +361,7 @@ function commitRecord(p,date,amount){
     p.settled=true;
     p.extraProfit=(p.extraProfit||0)+Math.max(0,amount-settle);
   }
-  // remMonthsが設定されていれば1減らす
-  if(p.remMonths!=null){
-    p.remMonths=Math.max(0,p.remMonths-1);
-    // 残り元金も月元本分減らす
-    const rm=p.remMonths+1; // 回収前の残り月数
-    const monthlyP=rm>0?p.remPrincipal/rm:0;
-    p.remPrincipal=Math.max(0,(p.remPrincipal||0)-monthlyP);
-  }
+  // remMonths/remPrincipalはそのまま（debt計算はpaidAfterで追跡）
 
   save();renderAll();
   if(detailId===p.id){renderDetailSummary(p);renderRepaymentTable(p);}
@@ -475,6 +481,7 @@ function applyShortage(){
     p.remPrincipal   = remPrincipal;
     p.remMonths      = nm;
     p.paidBeforeReset= recovered(p);
+    p.elapsedAtReset = p.elapsed;
     p.months         = p.elapsed + nm; // 表示用の総月数
 
   } else if(action==='monthly'){
@@ -486,6 +493,7 @@ function applyShortage(){
     p.remPrincipal   = remPrincipal;
     p.remMonths      = nm;
     p.paidBeforeReset= recovered(p);
+    p.elapsedAtReset = p.elapsed;
     p.months         = p.elapsed + nm;
   }
 
