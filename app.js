@@ -47,6 +47,10 @@ function mg(p){
   if(p.remPrincipal===undefined) p.remPrincipal=null; // null=自動計算
   if(p.remMonths===undefined)    p.remMonths   =null; // null=自動計算
   if(p.elapsedAtReset===undefined) p.elapsedAtReset=0;
+  // segmentsにfeeがなければ追加（既存データ移行）
+  if(p.segments&&p.segments.length&&p.segments[0].fee==null){
+    p.segments[0].fee=p.principal*(p.segments[0].rate/100);
+  }
   if(p.paidBeforeReset===undefined) p.paidBeforeReset=0;
   return p;
 }
@@ -141,17 +145,16 @@ function capProfit(p){return Math.max(0,p.principal-(p.actualCost||p.principal))
 
 function profit(p){
   if(!p.elapsed)return p.extraProfit||0;
-  // 累計手数料利益 = fee × 回収済み回数
-  // p.feeを使う（超過時はfee変えない、不足時はfee再計算済み）
-  // セグメントが1つの場合はp.fee×elapsedで正確
-  // セグメントが複数（利率変更あり）の場合はセグメントのrateで計算
+  // 累計手数料利益 = 各セグメントのfee × 回収回数
+  // seg.feeがあればそれを使う（不足時に記録）
+  // なければ p.fee（現在のfee）を使う
   let t=0;
   for(let i=0;i<p.segments.length;i++){
     const seg=p.segments[i];
     const nxt=i+1<p.segments.length?p.segments[i+1].startElapsed:p.elapsed;
     const sm=Math.max(0,nxt-seg.startElapsed);if(!sm)continue;
-    // 最後のセグメントはp.feeを使う（超過後の変化を反映しない）
-    const segFee=i===p.segments.length-1?p.fee:p.principal*(seg.rate/100);
+    // そのセグメントのfee: seg.feeがあればそれ、なければ元金×利率
+    const segFee=seg.fee!=null?seg.fee:p.principal*(seg.rate/100);
     t+=segFee*sm;
   }
   return t+(p.extraProfit||0);
@@ -266,7 +269,7 @@ function addProject(){
     principal:totalP,virtualCost:virt,actualCost:principal,
     fee,rate,months,elapsed:0,recovered:0,extraProfit:0,
     startDate:today(),planId,roundUnit,
-    segments:[{startElapsed:0,rate}],
+    segments:[{startElapsed:0,rate,fee}],
     deposits:[{date:today(),amount:totalP,virtualAmount:virt,actualAmount:principal,note:'初回入金'}],
     repayments:[],shortageMode:'months',shortageAccum:0
   };
@@ -454,6 +457,13 @@ function applyShortage(){
     p.principal+=ctx.shortage;
     p.shortageAccum=(p.shortageAccum||0)+ctx.shortage;
     p.fee=p.principal*(p.rate/100);
+    // feeが変わったのでsegmentsに新セグメントを追加（累計手数料利益の計算用）
+    const lastSeg2=p.segments[p.segments.length-1];
+    if(lastSeg2.fee==null) lastSeg2.fee=p.fee/(1+ctx.shortage/p.principal*0)||p.fee; // 不足前のfeeを保存
+    // 不足前のfeeを正しく計算
+    const prevPrincipal=p.principal-ctx.shortage;
+    lastSeg2.fee=prevPrincipal*(p.rate/100);
+    if(lastSeg2.startElapsed!==p.elapsed) p.segments.push({startElapsed:p.elapsed,rate:p.rate,fee:p.fee});
   } else {
     // 超過: 元金を超えないよう差し引く。超えた分はextraProfitへ
     const deduct=Math.min(ctx.surplus,p.principal);
