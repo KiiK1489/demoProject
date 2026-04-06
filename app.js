@@ -131,19 +131,27 @@ function getAlreadyPaid(p){
 }
 // 現時点での完済額 = 残り元金 + fee1回分
 function fullSettlement(p){
-  return getRemPrincipal(p)+getFee(p);
+  // 残り元金が0の場合は切り上げなし（手数料のみ）
+  const remP=getRemPrincipal(p);
+  if(remP<=0) return getFee(p);
+  // 残り元金がある場合は月回収額（切り上げ後）と同じ基準で切り上げ
+  return ceil(remP+getFee(p), p.roundUnit||10000);
 }
 function capProfit(p){return Math.max(0,p.principal-(p.actualCost||p.principal))}
 
 function profit(p){
   if(!p.elapsed)return p.extraProfit||0;
-  // 累計手数料利益 = fee × 回収済み回数（セグメントで利率変更に対応）
+  // 累計手数料利益 = fee × 回収済み回数
+  // p.feeを使う（超過時はfee変えない、不足時はfee再計算済み）
+  // セグメントが1つの場合はp.fee×elapsedで正確
+  // セグメントが複数（利率変更あり）の場合はセグメントのrateで計算
   let t=0;
   for(let i=0;i<p.segments.length;i++){
     const seg=p.segments[i];
     const nxt=i+1<p.segments.length?p.segments[i+1].startElapsed:p.elapsed;
     const sm=Math.max(0,nxt-seg.startElapsed);if(!sm)continue;
-    const segFee=p.principal*(seg.rate/100);
+    // 最後のセグメントはp.feeを使う（超過後の変化を反映しない）
+    const segFee=i===p.segments.length-1?p.fee:p.principal*(seg.rate/100);
     t+=segFee*sm;
   }
   return t+(p.extraProfit||0);
