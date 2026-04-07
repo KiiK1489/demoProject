@@ -139,7 +139,7 @@ input[type="date"].inp{color-scheme:dark;font-family:var(--sans);font-feature-se
 .dlg-ttl{font-size:.92rem;font-weight:700}
 .dlg-txt{font-size:.88rem;margin-bottom:18px;line-height:1.5}
 .dlg-btns{display:flex;gap:8px}
-.dlg-btns .btn-ghost,.dlg-btns .btn-danger{flex:1;justify-content:center}
+.dlg-btns .btn-ghost,.dlg-btns .btn-danger,.dlg-btns .btn-primary{flex:1;justify-content:center;width:auto;display:inline-flex;align-items:center}
 .info-box{background:var(--panel);border:1px solid var(--bd);border-radius:var(--rr);padding:9px 12px;font-size:.82rem;color:var(--m);line-height:1.6}
 .sub-inp{padding:6px 2px 10px}
 .sect-l{font-size:.72rem;font-weight:700;color:var(--m);letter-spacing:.08em;text-transform:uppercase}
