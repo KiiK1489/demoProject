@@ -736,7 +736,6 @@ function renderTable(){
   list.forEach(p=>{
     const d=debt(p),mf=mrFinal(p),rem=Math.max(0,p.months-p.elapsed),done=d<=0;
     const rc=done?'rem-ok':rem<=2?'rem-urg':'rem-warn';
-    const last=p.repayments&&p.repayments.length?p.repayments[p.repayments.length-1]:null;
     const tr=document.createElement('tr');
     tr.innerHTML=`
       <td style="color:var(--m);font-size:.75rem;font-family:var(--mono)">#${p.id}</td>
@@ -744,7 +743,6 @@ function renderTable(){
       <td style="text-align:right"><span class="debt${done?' debt-done':''}">${done?'完済':fmt(d)}</span></td>
       <td style="text-align:right;font-family:var(--mono);font-feature-settings:'zero'1,'tnum'1">${fmt(mf)}<span style="font-size:.68rem;color:var(--m)">/月</span></td>
       <td class="cnt">${p.elapsed}/${p.months}回<br><span class="rem ${rc}">${done?'完済':'残'+rem+'回'}</span></td>
-      <td style="text-align:right;font-family:var(--mono);font-feature-settings:'zero'1,'tnum'1">${last?fmt(last.amount):'—'}</td>
       <td><div class="row-btns">
         <button class="ibtn" title="詳細" onclick="openDetail(${p.id})">📋</button>
         <button class="ibtn ibtn-del" title="削除" onclick="askDelete(${p.id})">🗑</button>
@@ -766,7 +764,7 @@ function renderSummary(){
   const tFP=projects.reduce((a,p)=>a+profit(p),0);
   const tCP=projects.reduce((a,p)=>a+capProfit(p),0);
   const avgRate=projects.reduce((a,p)=>a+(p.rate||0),0)/projects.length;
-  const sumTP=projects.reduce((a,p)=>a+totalPay(p),0);
+  const sumTP=projects.reduce((a,p)=>a+totalPayDisplay(p),0);
   const avgRec=sumTP>0?Math.min((tR/sumTP)*100,100):0;
   s('sum-principal',fmt(tP));s('sum-actual',fmt(tA));
   s('sum-remaining',fmt(tD));s('sum-recovered',fmt(tR));

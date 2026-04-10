@@ -113,8 +113,7 @@ input[type="date"].inp{color-scheme:dark;font-family:var(--sans);font-feature-se
 .tbl th:nth-child(3),.tbl td:nth-child(3){width:128px;text-align:right}
 .tbl th:nth-child(4),.tbl td:nth-child(4){width:116px;text-align:right}
 .tbl th:nth-child(5),.tbl td:nth-child(5){width:88px;text-align:center}
-.tbl th:nth-child(6),.tbl td:nth-child(6){width:110px;text-align:right}
-.tbl th:nth-child(7),.tbl td:nth-child(7){width:80px;text-align:center}
+.tbl th:nth-child(6),.tbl td:nth-child(6){width:80px;text-align:center}
 .mono{font-family:var(--mono);font-feature-settings:"zero"1,"tnum"1}
 .debt{font-family:var(--mono);font-weight:700;font-feature-settings:"zero"1,"tnum"1}
 .debt-done{color:var(--g)}
