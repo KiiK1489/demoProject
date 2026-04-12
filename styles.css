@@ -99,7 +99,7 @@ input[type="date"].inp{color-scheme:dark;font-family:var(--sans);font-feature-se
 
 /* Table */
 .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-.tbl{width:100%;border-collapse:collapse;font-size:.84rem;table-layout:fixed}
+.tbl{width:100%;border-collapse:collapse;font-size:.84rem;table-layout:auto}
 .tbl thead tr{background:var(--panel)}
 .tbl th{padding:9px 12px;text-align:left;font-size:.68rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--m);border-bottom:1px solid var(--bd);white-space:nowrap;overflow:hidden}
 .tbl td{padding:9px 12px;border-bottom:1px solid var(--bd);vertical-align:middle;overflow:hidden}
@@ -109,7 +109,7 @@ input[type="date"].inp{color-scheme:dark;font-family:var(--sans);font-feature-se
 .empty-row td{text-align:center;color:var(--m);padding:36px;font-family:var(--sans)}
 /* 列幅 */
 .tbl th:nth-child(1),.tbl td:nth-child(1){width:48px}
-.tbl th:nth-child(2),.tbl td:nth-child(2){min-width:80px}
+.tbl th:nth-child(2),.tbl td:nth-child(2){min-width:100px;max-width:200px}
 .tbl th:nth-child(3),.tbl td:nth-child(3){width:128px;text-align:right}
 .tbl th:nth-child(4),.tbl td:nth-child(4){width:116px;text-align:right}
 .tbl th:nth-child(5),.tbl td:nth-child(5){width:88px;text-align:center}
