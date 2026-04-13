@@ -536,7 +536,11 @@ function updateShortagePreview(){
   const newFee =isSh?newP*(p.rate/100):p.fee;
   // 残り元金（計算用）= 新元金 - 月元本 × 回収済み回数
   const origMP = p.principal/p.months;
-  const remP   = Math.max(0, newP - origMP*p.elapsed);
+  const thisPaidPrincipal = Math.min(
+    Math.max(0, shortageCtx.amount - p.fee),
+    origMP
+  );
+  const remP   = Math.max(0, newP - origMP*p.elapsed - thisPaidPrincipal);
   const pv=document.getElementById('shortage-preview');
   const pt=document.getElementById('shortage-preview-text');
   if(action==='months'){
