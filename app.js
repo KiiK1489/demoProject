@@ -545,8 +545,7 @@ function updateShortagePreview(){
     // 月回収額 = 残り元金/残り月数 + fee
     const rawM=remP/nm+newFee;
     const finalM=ceil(rawM,p.roundUnit||10000);
-    const newTotal=p.elapsed+nm;
-    pt.textContent=`月回収額: ${fmt(finalM)}　×　${nm}回　総支払: ${fmt(finalM*newTotal)}`;
+    pt.textContent=`月回収額: ${fmt(finalM)}　×　${nm}回　総支払: ${fmt(finalM*nm)}`;
     pv.classList.remove('hidden');
   } else if(action==='monthly'){
     const mf=pn(document.getElementById('shortage-new-monthly').value?.replace(/,/g,''));
@@ -554,8 +553,7 @@ function updateShortagePreview(){
     const mpp=mf-newFee;if(mpp<=0){pv.classList.add('hidden');return;}
     // 残り月数 = ceil(残り元金 ÷ 月元本部分)
     const nm=Math.max(1,Math.ceil(remP/mpp));
-    const newTotal=p.elapsed+nm;
-    pt.textContent=`月回収額: ${fmt(mf)}　×　${nm}回　総支払: ${fmt(mf*newTotal)}`;
+    pt.textContent=`月回収額: ${fmt(mf)}　×　${nm}回　総支払: ${fmt(mf*nm)}`;
     pv.classList.remove('hidden');
   } else pv.classList.add('hidden');
 }
