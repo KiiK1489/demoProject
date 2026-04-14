@@ -196,7 +196,7 @@ function renderPlans(){
     el.addEventListener('blur',()=>{
       const i=+el.dataset.i;const rv=pn(el.value);if(rv===null||rv<0){el.value=fmtRate(plans[i].rate);return;}
       const rp=rv<=1?rv*100:rv;plans[i].rate=rp;
-      projects.forEach(p=>{if(p.planId===plans[i].id){p.rate=rp;p.fee=p.principal*(rp/100);const l=p.segments[p.segments.length-1];if(l.startElapsed===p.elapsed)l.rate=rp;else p.segments.push({startElapsed:p.elapsed,rate:rp});}});
+      projects.forEach(p=>{if(p.planId===plans[i].id){p.rate=rp;p.fee=p.principal*(rp/100);const l=p.segments[p.segments.length-1];if(l.startElapsed===p.elapsed){l.rate=rp;l.fee=p.fee;}else p.segments.push({startElapsed:p.elapsed,rate:rp,fee:p.fee});}});
       el.value=fmtRate(rp);saveP();save();renderAll();
     });
     el.addEventListener('keydown',e=>{if(e.key==='Enter')el.blur();});
@@ -908,7 +908,7 @@ function bind(){
     const p=projects.find(x=>x.id===detailId);if(!p)return;
     const pid=pn(document.getElementById('detail-plan-select').value);
     p.planId=pid||null;
-    if(pid){const nr=getRate(pid);p.rate=nr;p.fee=p.principal*(nr/100);const l=p.segments[p.segments.length-1];if(l.startElapsed===p.elapsed)l.rate=nr;else p.segments.push({startElapsed:p.elapsed,rate:nr});}
+    if(pid){const nr=getRate(pid);p.rate=nr;p.fee=p.principal*(nr/100);const l=p.segments[p.segments.length-1];if(l.startElapsed===p.elapsed){l.rate=nr;l.fee=p.fee;}else p.segments.push({startElapsed:p.elapsed,rate:nr,fee:p.fee});}
     save();renderDetailSummary(p);renderAll();toast('プランを変更しました','ok');
   });
   document.getElementById('detail-memo').addEventListener('blur',()=>{
