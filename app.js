@@ -554,7 +554,7 @@ function updateShortagePreview(){
   } else if(action==='monthly'){
     const mf=pn(document.getElementById('shortage-new-monthly').value?.replace(/,/g,''));
     if(!mf||mf<=0){pv.classList.add('hidden');return;}
-    const mpp=mf-newFee;if(mpp<=0){pv.classList.add('hidden');return;}
+    const mpp=mf-newFee;if(mpp<=0){pt.textContent=`⚠ 月手数料（${fmt(newFee)}）を下回っています`;pv.classList.remove('hidden');return;}
     // 残り月数 = ceil(残り元金 ÷ 月元本部分)
     const nm=Math.max(1,Math.ceil(remP/mpp));
     pt.textContent=`月回収額: ${fmt(mf)}　×　${nm}回　総支払: ${fmt(mf*nm)}`;
