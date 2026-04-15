@@ -662,7 +662,7 @@ function renderDepositTable(p){
   p.deposits.forEach((d,i)=>{
     const tag=i===0?'<span class="tag tag-i">初回</span>':'<span class="tag tag-a">追加</span>';
     const tr=document.createElement('tr');
-    tr.innerHTML=`<td>${tag}</td><td><input type="date" class="hi hi-date dep-date" value="${d.date||''}" data-i="${i}"/></td><td><input type="text" class="hi hi-amt dep-amt" value="${Math.round(d.amount||0).toLocaleString('ja-JP')}" inputmode="numeric" data-i="${i}"/></td><td><input type="text" class="hi hi-amt dep-actual" value="${Math.round(d.actualAmount||d.amount||0).toLocaleString('ja-JP')}" inputmode="numeric" data-i="${i}"/></td><td><input type="text" class="hi hi-note dep-note" value="${ea(d.note||'')}" placeholder="メモ" data-i="${i}"/></td><td>${i===0?'<span style="font-size:.68rem;color:var(--m)">削除不可</span>':`<button class="hdel dep-del" data-i="${i}">🗑</button>`}</td>`;
+    tr.innerHTML=`<td>${tag}</td><td><input type="date" class="hi hi-date dep-date" value="${d.date||''}" data-i="${i}"/></td><td><input type="text" class="hi hi-amt dep-amt" value="${Math.round((d.amount||0)+(i===0?0:(d.virtualAmount||0))).toLocaleString('ja-JP')}" inputmode="numeric" data-i="${i}"/></td><td><input type="text" class="hi hi-amt dep-actual" value="${Math.round(d.actualAmount||d.amount||0).toLocaleString('ja-JP')}" inputmode="numeric" data-i="${i}"/></td><td><input type="text" class="hi hi-note dep-note" value="${ea(d.note||'')}" placeholder="メモ" data-i="${i}"/></td><td>${i===0?'<span style="font-size:.68rem;color:var(--m)">削除不可</span>':`<button class="hdel dep-del" data-i="${i}">🗑</button>`}</td>`;
     tb.appendChild(tr);
   });
   tb.querySelectorAll('.dep-amt,.dep-actual').forEach(el=>ci(el));
