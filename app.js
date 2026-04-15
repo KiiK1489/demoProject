@@ -330,7 +330,7 @@ function addFunds(){
 
 function recalcDeposits(p){
   if(!p.deposits||!p.deposits.length)return;
-  const newP=p.deposits.reduce((s,d)=>s+(d.amount||0)+(d.virtualAmount||0),0);
+  const newP=p.deposits.reduce((s,d,i)=>s+(d.amount||0)+(i===0?0:(d.virtualAmount||0)),0);
   const newA=p.deposits.reduce((s,d)=>s+(d.actualAmount||0),0);
   const newV=p.deposits.reduce((s,d)=>s+(d.virtualAmount||0),0);
   p.principal=newP;p.actualCost=newA;p.virtualCost=newV;
@@ -921,6 +921,9 @@ function bind(){
     if(!nm||nm<1){toast('回数を入力してください','err');return;}
     if(nm<=p.elapsed){toast(`すでに${p.elapsed}回回収済みです`,'err');return;}
     p.months=nm;p.fee=p.principal*(p.rate/100);
+    p.remMonths=nm-p.elapsed;
+    p.paidBeforeReset=recovered(p);
+    p.elapsedAtReset=p.elapsed;
     save();renderDetailSummary(p);renderAll();toast(`回収回数を${nm}回に変更しました`,'ok');
   });
   document.getElementById('btn-add-repayment').addEventListener('click',()=>{
